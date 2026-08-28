@@ -4,6 +4,7 @@ import { formatDate, formatMoney, groupBySystem } from './utils'
 function ascii(value: string): string {
   return value
     .replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[—–]/g, '-').replace(/…/g, '...')
+    .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
     .split('').map((character) => {
       const code = character.charCodeAt(0)
       return code >= 32 && code <= 126 ? character : '?'

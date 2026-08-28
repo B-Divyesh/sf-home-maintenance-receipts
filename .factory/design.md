@@ -20,7 +20,7 @@ the same semantic hierarchy and meet WCAG AA contrast.
 | paper | `#f4f0e6` | `#101d29` | page/background |
 | sheet | `#fffdf7` | `#172838` | primary surface |
 | ink | `#142c3c` | `#f6f2e8` | body text |
-| muted | `#526773` | `#b7c7cf` | supporting text |
+| muted | `#465c68` | `#b7c7cf` | supporting text |
 | blueprint | `#135ea8` | `#66b4ff` | actions, measurement marks |
 | blueprint deep | `#0b477f` | `#98ceff` | hover/emphasis |
 | rule | `#b8c8cf` | `#415566` | outlines and grid |
