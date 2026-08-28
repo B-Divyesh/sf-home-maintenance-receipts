@@ -226,6 +226,18 @@ async function submitRecord(form: HTMLFormElement, dialog: HTMLDialogElement): P
   const error = form.querySelector<HTMLElement>('#form-error')!
   const data = new FormData(form)
   const file = data.get('attachment') as File
+  const systemInput = form.elements.namedItem('system') as HTMLInputElement
+  const taskInput = form.elements.namedItem('task') as HTMLInputElement
+  if (!systemInput.value.trim()) {
+    error.textContent = 'Enter an appliance or system, not only spaces.'
+    systemInput.focus()
+    return
+  }
+  if (!taskInput.value.trim()) {
+    error.textContent = 'Enter a completed task, not only spaces.'
+    taskInput.focus()
+    return
+  }
   const maxSize = license.unlocked ? 15_000_000 : 5_000_000
   if (file?.size > maxSize) { error.textContent = `That file is over the ${license.unlocked ? '15' : '5'} MB limit. Choose a smaller file.`; return }
   submit.disabled = true
@@ -295,7 +307,17 @@ async function importJson(event: Event): Promise<void> {
     const data = await parseBackup(file)
     const dialog = dialogFrame(`<div class="confirm-dialog"><p class="sheet-label">Restore checked</p><h2 id="restore-title">Replace this home file?</h2><p><strong>${data.records.length} records</strong> and <strong>${data.attachments.length} evidence files</strong> were found. Restoring will replace the records currently on this device.</p><div class="dialog-actions"><button class="button secondary" data-close>Cancel</button><button class="button danger" id="confirm-restore">Replace and restore</button></div></div>`, 'restore-title')
     dialog.querySelector('#confirm-restore')?.addEventListener('click', async () => {
-      await replaceAll(data.records, data.attachments, data.settings); records = await getRecords(); settings = await getSettings(); applyTheme(); dialog.close(); dialog.remove(); render(); toast('Backup restored successfully.')
+      const restore = dialog.querySelector<HTMLButtonElement>('#confirm-restore')!
+      restore.disabled = true
+      restore.textContent = 'Restoring…'
+      try {
+        await replaceAll(data.records, data.attachments, data.settings)
+        records = await getRecords(); settings = await getSettings(); applyTheme(); dialog.close(); dialog.remove(); render(); toast('Backup restored successfully.')
+      } catch {
+        restore.disabled = false
+        restore.textContent = 'Replace and restore'
+        toast('The backup could not replace your home file. Your previous file was kept.')
+      }
     })
   } catch (caught) { toast(caught instanceof Error ? caught.message : 'That backup could not be read.') }
   input.value = ''
@@ -303,7 +325,15 @@ async function importJson(event: Event): Promise<void> {
 
 async function updateSettings(event: SubmitEvent): Promise<void> {
   event.preventDefault()
-  const data = new FormData(event.currentTarget as HTMLFormElement)
+  const form = event.currentTarget as HTMLFormElement
+  const homeName = form.elements.namedItem('homeName') as HTMLInputElement
+  if (!homeName.value.trim()) {
+    homeName.setCustomValidity('Enter a home name, not only spaces.')
+    homeName.reportValidity()
+    homeName.addEventListener('input', () => homeName.setCustomValidity(''), { once: true })
+    return
+  }
+  const data = new FormData(form)
   settings = { homeName: String(data.get('homeName')).trim(), address: String(data.get('address')).trim(), theme: data.get('theme') as Settings['theme'] }
   await saveSettings(settings); applyTheme(); render(); toast('Home details saved.')
 }

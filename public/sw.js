@@ -1,7 +1,8 @@
-const VERSION = 'hmr-v3'
+const VERSION = 'hmr-v4'
 const SHELL_CACHE = `${VERSION}-shell`
 const RUNTIME_CACHE = `${VERSION}-runtime`
-const SHELL = ['/', '/index.html', '/offline.html', '/privacy/', '/terms/', '/legal.css', '/manifest.webmanifest', '/assets/app.js', '/assets/app.css', '/icons/icon-192.png', '/icons/icon-512.png', '/assets/blueprint-desk.webp', '/assets/blueprint-desk.jpg']
+const APP_ASSETS = [] /* __APP_ASSETS__ */
+const SHELL = ['/', '/index.html', '/offline.html', '/offline.css', '/privacy/', '/terms/', '/legal.css', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/assets/blueprint-desk.webp', '/assets/blueprint-desk.jpg', ...APP_ASSETS]
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL)))
@@ -28,11 +29,11 @@ self.addEventListener('fetch', (event) => {
       const copy = response.clone()
       caches.open(RUNTIME_CACHE).then((cache) => cache.put(event.request, copy))
       return response
-    }).catch(async () => (await caches.match(event.request)) || (await caches.match('/index.html')) || (await caches.match('/offline.html'))))
+    }).catch(async () => (await caches.match(event.request, { ignoreVary: true })) || (await caches.match('/index.html')) || (await caches.match('/offline.html'))))
     return
   }
 
-  event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
+  event.respondWith(caches.match(event.request, { ignoreVary: true }).then((cached) => cached || fetch(event.request).then((response) => {
     if (response.ok) caches.open(RUNTIME_CACHE).then((cache) => cache.put(event.request, response.clone()))
     return response
   })))

@@ -40,11 +40,11 @@ npm install
 npm run dev
 ```
 
-The billing client uses the staging endpoint by default. Override it when the
-factory releases the product:
+Release builds use the production Sociobot billing endpoint by default. A
+different base may be injected only for an isolated billing-contract test:
 
 ```sh
-VITE_BILLING_API_BASE=https://api.sociobot.in npm run build
+VITE_BILLING_API_BASE=https://pilot-api.sociobot.in npm run build
 ```
 
 No product ID is embedded. The product slug is used with the standard Sociobot
@@ -77,8 +77,9 @@ the static deploy root is `dist/` with `dist/index.html` at its root.
 
 Deploy the contents of `dist/` as a static site with HTTPS and directory-index
 support for `/privacy/` and `/terms/`. The service worker scope must remain `/`.
-Infrastructure, DNS, billing product registration, and the production billing
-base URL are intentionally managed by the factory outside this repository.
+`staticwebapp.config.json` ships the source/framing policy, manifest MIME type,
+and cache rules with the static artifact. Infrastructure, DNS, and billing
+product registration remain factory-managed outside this repository.
 
 ## License
 

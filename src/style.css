@@ -223,6 +223,7 @@ dialog::backdrop { background: rgb(7 22 33 / 68%); backdrop-filter: blur(2px); }
 footer { grid-column: 1 / -1; grid-row: 3; min-height: 86px; display: flex; align-items: center; gap: 22px; padding: 18px 28px calc(18px + env(safe-area-inset-bottom)); border-top: 1px solid var(--rule); background: var(--sheet); color: var(--muted); font-size: .78rem; }
 footer p { margin: 0; }
 footer nav { display: flex; gap: 15px; }
+footer nav a { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 8px 4px; }
 footer .generated-note { margin-left: auto; }
 .toast-region { position: fixed; z-index: 20; right: 20px; bottom: 20px; bottom: max(20px, env(safe-area-inset-bottom)); }
 .toast { max-width: 420px; min-height: 54px; display: flex; align-items: center; gap: 11px; padding: 12px 15px; border: 1px solid var(--blue); border-left: 5px solid var(--blue); background: var(--sheet); box-shadow: var(--shadow); }

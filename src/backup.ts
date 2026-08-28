@@ -1,5 +1,89 @@
 import type { BackupFile, EvidenceFile, MaintenanceRecord, Settings } from './types'
-import { escapeCsv } from './utils'
+import { escapeCsv, hashFile } from './utils'
+
+const HASH_PATTERN = /^[a-f0-9]{64}$/i
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+const THEMES = new Set<Settings['theme']>(['light', 'dark', 'system'])
+
+function restoreError(message: string): Error {
+  return new Error(`${message} No data was changed.`)
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isString(value: unknown, maxLength: number, required = false): value is string {
+  return typeof value === 'string' && value.length <= maxLength && (!required || value.trim().length > 0)
+}
+
+function isDate(value: unknown, optional = false): value is string {
+  if (optional && value === '') return true
+  if (typeof value !== 'string' || !DATE_PATTERN.test(value)) return false
+  const date = new Date(`${value}T12:00:00Z`)
+  return !Number.isNaN(date.valueOf()) && date.toISOString().slice(0, 10) === value
+}
+
+function isTimestamp(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= 40 && Number.isFinite(Date.parse(value))
+}
+
+function readSettings(value: unknown): Settings {
+  if (!isObject(value)
+    || !isString(value.homeName, 80, true)
+    || !isString(value.address, 160)
+    || typeof value.theme !== 'string'
+    || !THEMES.has(value.theme as Settings['theme'])) {
+    throw restoreError('The backup has invalid home settings.')
+  }
+  return { homeName: value.homeName.trim(), address: value.address.trim(), theme: value.theme as Settings['theme'] }
+}
+
+function readRecord(value: unknown, index: number): MaintenanceRecord {
+  const label = `Record ${index + 1}`
+  if (!isObject(value)) throw restoreError(`${label} is not a complete maintenance record.`)
+  if (!isString(value.id, 200, true)) throw restoreError(`${label} has an invalid identifier.`)
+  if (!isString(value.system, 80, true)) throw restoreError(`${label} has an invalid appliance or system.`)
+  if (!isString(value.task, 120, true)) throw restoreError(`${label} has an invalid completed task.`)
+  if (!isDate(value.completedDate)) throw restoreError(`${label} has an invalid completion date.`)
+  if (!isString(value.provider, 100)) throw restoreError(`${label} has an invalid provider.`)
+  if (value.cost !== null && (typeof value.cost !== 'number' || !Number.isFinite(value.cost) || value.cost < 0 || value.cost > 9_999_999)) {
+    throw restoreError(`${label} has an invalid cost.`)
+  }
+  if (!isDate(value.nextDueDate, true)) throw restoreError(`${label} has an invalid next-due date.`)
+  if (!isString(value.notes, 800)) throw restoreError(`${label} has invalid notes.`)
+  if (!isTimestamp(value.createdAt) || !isTimestamp(value.updatedAt)) throw restoreError(`${label} has invalid history dates.`)
+
+  const hasAttachment = value.attachmentId !== null
+  if (hasAttachment) {
+    if (!isString(value.attachmentId, 200, true)
+      || !isString(value.attachmentName, 255, true)
+      || !isString(value.attachmentType, 200, true)
+      || typeof value.attachmentHash !== 'string'
+      || !HASH_PATTERN.test(value.attachmentHash)) {
+      throw restoreError(`${label} has incomplete evidence metadata.`)
+    }
+  } else if (value.attachmentName !== null || value.attachmentType !== null || value.attachmentHash !== null) {
+    throw restoreError(`${label} has evidence metadata without an evidence file.`)
+  }
+
+  return {
+    id: value.id,
+    system: value.system.trim(),
+    task: value.task.trim(),
+    completedDate: value.completedDate,
+    provider: value.provider.trim(),
+    cost: value.cost as number | null,
+    nextDueDate: value.nextDueDate,
+    notes: value.notes.trim(),
+    attachmentId: value.attachmentId as string | null,
+    attachmentName: value.attachmentName as string | null,
+    attachmentType: value.attachmentType as string | null,
+    attachmentHash: typeof value.attachmentHash === 'string' ? value.attachmentHash.toLowerCase() : null,
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+  }
+}
 
 function download(blob: Blob, name: string): void {
   const url = URL.createObjectURL(blob)
@@ -20,10 +104,15 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 }
 
 function dataUrlToBlob(dataUrl: string): Blob {
-  const [header, encoded] = dataUrl.split(',')
-  if (!header || !encoded) throw new Error('An attachment in this backup is incomplete.')
-  const type = /data:([^;]+)/.exec(header)?.[1] ?? 'application/octet-stream'
-  const binary = atob(encoded)
+  const match = /^data:([^;,]+);base64,([A-Za-z0-9+/]*={0,2})$/.exec(dataUrl)
+  if (!match) throw restoreError('An evidence file has invalid encoded data.')
+  const [, type, encoded] = match
+  let binary: string
+  try {
+    binary = atob(encoded)
+  } catch {
+    throw restoreError('An evidence file has invalid encoded data.')
+  }
   const bytes = new Uint8Array(binary.length)
   for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
   return new Blob([bytes], { type })
@@ -49,10 +138,69 @@ export function downloadCsv(records: MaintenanceRecord[]): void {
 }
 
 export async function parseBackup(file: File): Promise<{ records: MaintenanceRecord[]; attachments: EvidenceFile[]; settings: Settings }> {
-  const data = JSON.parse(await file.text()) as BackupFile
-  if (data.format !== 'home-maintenance-receipts' || data.version !== 1 || !Array.isArray(data.records) || !Array.isArray(data.attachments)) {
+  let data: unknown
+  try {
+    data = JSON.parse(await file.text()) as unknown
+  } catch {
+    throw restoreError('That file is not valid JSON.')
+  }
+  if (!isObject(data)
+    || data.format !== 'home-maintenance-receipts'
+    || data.version !== 1
+    || !isTimestamp(data.exportedAt)
+    || !Array.isArray(data.records)
+    || !Array.isArray(data.attachments)) {
     throw new Error('Choose a version 1 Home Maintenance Receipts backup.')
   }
-  const attachments = data.attachments.map(({ dataUrl, ...attachment }) => ({ ...attachment, blob: dataUrlToBlob(dataUrl) }))
-  return { records: data.records, attachments, settings: data.settings }
+
+  const settings = readSettings(data.settings)
+  const records = data.records.map(readRecord)
+  const recordIds = new Set<string>()
+  records.forEach((record, index) => {
+    if (recordIds.has(record.id)) throw restoreError(`Record ${index + 1} repeats an existing identifier.`)
+    recordIds.add(record.id)
+  })
+
+  const attachments: EvidenceFile[] = []
+  const attachmentIds = new Set<string>()
+  for (let index = 0; index < data.attachments.length; index += 1) {
+    const value = data.attachments[index]
+    const label = `Evidence file ${index + 1}`
+    if (!isObject(value)
+      || !isString(value.id, 200, true)
+      || !isString(value.name, 255, true)
+      || !isString(value.type, 200, true)
+      || typeof value.size !== 'number'
+      || !Number.isSafeInteger(value.size)
+      || value.size < 0
+      || value.size > 15_000_000
+      || typeof value.hash !== 'string'
+      || !HASH_PATTERN.test(value.hash)
+      || typeof value.dataUrl !== 'string') {
+      throw restoreError(`${label} has invalid metadata.`)
+    }
+    if (attachmentIds.has(value.id)) throw restoreError(`${label} repeats an existing identifier.`)
+    const blob = dataUrlToBlob(value.dataUrl)
+    if (blob.size !== value.size || blob.type !== value.type) throw restoreError(`${label} does not match its size or file type.`)
+    const actualHash = await hashFile(blob)
+    if (actualHash !== value.hash.toLowerCase()) throw restoreError(`${label} does not match its SHA-256 evidence hash.`)
+    attachments.push({ id: value.id, name: value.name, type: value.type, size: value.size, hash: actualHash, blob })
+    attachmentIds.add(value.id)
+  }
+
+  const attachmentsById = new Map(attachments.map((attachment) => [attachment.id, attachment]))
+  records.forEach((record, index) => {
+    if (!record.attachmentId) return
+    const attachment = attachmentsById.get(record.attachmentId)
+    if (!attachment) throw restoreError(`Record ${index + 1} refers to a missing evidence file.`)
+    if (record.attachmentName !== attachment.name || record.attachmentType !== attachment.type || record.attachmentHash !== attachment.hash) {
+      throw restoreError(`Record ${index + 1} does not match its evidence metadata.`)
+    }
+  })
+  const referencedIds = new Set(records.flatMap((record) => record.attachmentId ? [record.attachmentId] : []))
+  attachments.forEach((attachment, index) => {
+    if (!referencedIds.has(attachment.id)) throw restoreError(`Evidence file ${index + 1} is not linked to a maintenance record.`)
+  })
+
+  return { records, attachments, settings }
 }

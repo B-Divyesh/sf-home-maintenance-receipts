@@ -1,7 +1,7 @@
 const SLUG = 'home-maintenance-receipts'
 const STORAGE_KEY = `sb_license:${SLUG}`
 const VERDICT_KEY = `${STORAGE_KEY}:verdict`
-const API_BASE = import.meta.env.VITE_BILLING_API_BASE || 'https://pilot-api.sociobot.in'
+const API_BASE = import.meta.env.VITE_BILLING_API_BASE || 'https://api.sociobot.in'
 
 export type LicenseState = {
   unlocked: boolean
