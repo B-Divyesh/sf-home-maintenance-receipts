@@ -15,7 +15,9 @@ is the receipt?” without depending on a vendor cloud. The production site is
 - exports CSV and a complete JSON backup, including original evidence files.
 - restores a full backup after showing exactly what will be replaced.
 - installs as a PWA and reloads the complete home file while offline.
-- provides a useful free tier and a $29 one-time House File Plus unlock.
+- provides a useful free tier and a $29 one-time House File Plus unlock when
+  the factory billing product is enabled. The app does not show a purchase link
+  if the billing service reports that checkout is unavailable.
 
 This is a record-keeping aid, not proof of warranty, permit, insurance, tax, or
 legal compliance. It does not book contractors, diagnose a home, or file claims.

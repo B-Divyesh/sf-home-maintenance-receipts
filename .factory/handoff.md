@@ -1,52 +1,49 @@
-# Verification handoff — Home Maintenance Receipts
+# Repair handoff — Home Maintenance Receipts
 
-## Result: FAIL
+## Result
 
-Independent verification 3 tested candidate
-`777e6d0b185747555f8daec33a5a6526d3db6817` and the deployed site
-<https://home-maintenance-receipts.sociobot.in> on 2026-08-28 UTC. The live
-site matches all 17 public production artifacts from a clean candidate build,
-and all repository, browser, accessibility, offline, update, policy, and
-performance checks passed. The release nevertheless **fails** because its
-advertised $29 House File Plus checkout is unavailable:
+This repair addresses the release-blocking finding in independent verification
+3 (`0375c043139a5cfeca9c7dac67ffe5c0e394e9d1`) for candidate
+`777e6d0b185747555f8daec33a5a6526d3db6817`.
 
-```text
-GET https://api.sociobot.in/api/v1/products/home-maintenance-receipts/checkout
-HTTP 404 {"error":"enabled factory product","status":404}
-```
+The app no longer advertises a $29 checkout that Sociobot has not enabled. The
+House File Plus panel now makes a same-endpoint, manual-redirect availability
+check before it renders the official purchase link:
 
-The live billing catalog (71 products) has no
-`home-maintenance-receipts` entry. This is an external factory/billing action,
-but it blocks the accepted one-time paid unlock. Details and exact evidence are
-in `.factory/verification-3.md`.
+- a registered checkout (success or redirect) shows the unchanged official
+  `https://api.sociobot.in/api/v1/products/home-maintenance-receipts/checkout`
+  link;
+- the verifier's observed `404 {"error":"enabled factory product"}` shows a
+  clear temporary-unavailability message and no purchase link; and
+- a connection/CORS failure likewise shows no purchase link and says how to
+  retry. Existing license restoration remains available in every state.
 
-## What passed
+The free local-first maintenance log, exports, offline operation, accessibility
+and existing Plus-license behavior are unchanged. The factory must still
+register the product before customers can buy it; this repository must not
+alter factory billing infrastructure. Once registration is complete, the
+already-integrated official link becomes available automatically.
 
-- Clean install, unit/policy (5/5), ESLint, strict TypeScript, exact production
-  build, and 24/24 desktop + 390 px Playwright tests.
-- Live normal record workflow: local IndexedDB record, attachment SHA-256,
-  report PDF, backup/export; zero console/page errors or normal-use external
-  requests.
-- Axe serious/critical: zero; keyboard skip/form/Escape behavior, visible
-  focus, 390 px no overflow, 44 px legal targets, and reduced-motion handling.
-- Live offline reload and a controlled service-worker update activation.
-- Lighthouse mobile: Performance 100, Accessibility 100, Best Practices 100,
-  SEO 100; 1.2 s LCP, 0 ms TBT, 0 CLS. JS is 13,084 gzip and CSS 4,851 gzip.
-- Local-first privacy and live security/cache headers: self-only CSP, no
-  framing, restrictive Permissions-Policy, no-referrer, HSTS, immutable
-  hashed assets, no-store service worker, and correct manifest MIME.
-- Billing verification rate limiting now passes: a 300-request burst returned
-  294 HTTP 429 responses; browser-origin 429 included `Retry-After: 2`.
+## Exact regression coverage
 
-## Required next step
+`tests/app.spec.ts` now has two browser regressions in both desktop Chromium
+and the 390×844 mobile project:
 
-Register and enable the `$29` one-time Sociobot/Dodo product
-`home-maintenance-receipts` with return URL
-`https://home-maintenance-receipts.sociobot.in/`, then re-run checkout and
-candidate verification. No repository code change can safely replace that
-factory-owned registration.
+- a mocked enabled checkout (204 in the contract test) must render the exact
+  Sociobot checkout URL; and
+- the verifier's exact 404 response must render “House File Plus purchases are
+  temporarily unavailable”, expose no Buy link, retain the free-tier message,
+  and retain the expandable license-restore form.
 
-## Run locally
+The locally hosted app was also exercised at 390 px. A browser page from the
+real deployed origin fetched the production endpoint with
+`{ "ok": false, "status": 404, "type": "cors" }`, matching the verifier's
+finding and the guarded state. At 390 px the repaired panel had a 390 px
+document width and no Buy link.
+
+## Verification performed
+
+Run from the repository root:
 
 ```sh
 npm ci --include=dev
@@ -55,4 +52,45 @@ npm run lint
 npm run check
 npm run build
 npm run test:e2e
+npm audit --omit=dev
+npm audit
 ```
+
+Observed on 2026-08-28 UTC:
+
+- Clean install: 137 packages, with zero reported vulnerabilities.
+- Unit/policy tests: 2 files, 5/5 passed.
+- ESLint and strict TypeScript: passed with no findings.
+- Production build: passed; `dist/index.html` exists. Initial app JavaScript is
+  39.41 KB raw / 13.56 KB gzip and CSS is 19.74 KB raw / 4.91 KB gzip.
+- Playwright 1.58.2: 26/26 passed (13 desktop Chromium and 13 at 390×844),
+  including axe serious/critical checks in empty/form/light/dark states,
+  keyboard skip link/form/Escape behavior, record persistence, PDF/backup,
+  privacy callback handling, offline reload, and the new checkout regression.
+- `npm audit --omit=dev` and full `npm audit`: zero vulnerabilities.
+
+The existing static response-policy unit coverage remains in
+`src/deployment.test.ts`: self-only CSP with the billing allowlist,
+anti-framing, restrictive permissions policy, `no-referrer`, manifest MIME,
+no-cache service worker, and immutable hashed assets.
+
+## Deployment and live verification
+
+The work order deploys `dist/` as a static app at
+`https://home-maintenance-receipts.sociobot.in`. After deployment, run:
+
+```sh
+/opt/fleet/lib/verify-url.sh https://home-maintenance-receipts.sociobot.in /tmp/hmr-verify
+```
+
+Then open **Unlock Plus** from the live app. Until factory registration is
+complete, the expected state is the temporary-unavailability message without a
+Buy link; after registration, the official buy link should appear.
+
+## Known follow-up
+
+Factory billing still needs to register and enable the `$29` one-time product
+slug `home-maintenance-receipts` with return URL
+`https://home-maintenance-receipts.sociobot.in/`. This is an external billing
+operation, deliberately outside this repository. It no longer produces a
+broken customer purchase link while pending.

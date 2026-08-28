@@ -241,7 +241,8 @@ test('rejects whitespace-only record identity fields', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Start your home’s paper trail.' })).toBeVisible()
 })
 
-test('uses the production checkout contract and 44px mobile legal targets', async ({ page }) => {
+test('shows the official checkout only after the billing product is available, and keeps mobile legal targets at 44px', async ({ page }) => {
+  await page.route('https://api.sociobot.in/api/v1/products/home-maintenance-receipts/checkout', (route) => route.fulfill({ status: 204 }))
   await page.goto('/')
   await page.getByRole('button', { name: 'Unlock Plus' }).click()
   await expect(page.getByRole('link', { name: 'Buy House File Plus — $29' })).toHaveAttribute(
@@ -254,4 +255,20 @@ test('uses the production checkout contract and 44px mobile legal targets', asyn
     expect(box?.width).toBeGreaterThanOrEqual(44)
     expect(box?.height).toBeGreaterThanOrEqual(44)
   }
+})
+
+test('does not advertise a broken checkout when the billing product is not enabled', async ({ page }) => {
+  await page.route('https://api.sociobot.in/api/v1/products/home-maintenance-receipts/checkout', (route) => route.fulfill({
+    status: 404,
+    contentType: 'application/json',
+    body: JSON.stringify({ error: 'enabled factory product', status: 404 }),
+  }))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Unlock Plus' }).click()
+  await expect(page.getByText('House File Plus purchases are temporarily unavailable.')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Buy House File Plus — $29' })).toHaveCount(0)
+  await expect(page.locator('main').getByText('$29', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Your free home file, exports, and offline use continue to work.')).toBeVisible()
+  await page.getByText('Already purchased? Restore a license').click()
+  await expect(page.getByRole('button', { name: 'Verify license' })).toBeVisible()
 })

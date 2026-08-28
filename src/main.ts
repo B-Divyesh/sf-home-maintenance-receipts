@@ -1,6 +1,6 @@
 import './style.css'
 import { downloadBackup, downloadCsv, parseBackup } from './backup'
-import { captureLicenseFromUrl, checkoutUrl, initialLicenseState, storeLicense, verifyLicense, type LicenseState } from './license'
+import { captureLicenseFromUrl, checkCheckoutAvailability, checkoutUrl, initialLicenseState, storeLicense, verifyLicense, type CheckoutAvailability, type LicenseState } from './license'
 import { downloadPdf } from './report'
 import { deleteRecord, getAttachment, getAttachments, getRecords, getSettings, replaceAll, saveRecord, saveSettings } from './storage'
 import type { EvidenceFile, MaintenanceRecord, Settings } from './types'
@@ -12,6 +12,7 @@ const app = document.querySelector<HTMLDivElement>('#app')!
 let records: MaintenanceRecord[] = []
 let settings: Settings = { homeName: 'My home', address: '', theme: 'system' }
 let license: LicenseState = initialLicenseState()
+let checkoutAvailability: CheckoutAvailability | 'idle' | 'checking' = 'idle'
 let currentView: View = 'log'
 let query = ''
 let statusFilter = 'all'
@@ -145,12 +146,26 @@ function backupView(): string {
 }
 
 function upgradeView(): string {
+  const priceBlock = checkoutAvailability === 'available'
+    ? `<div class="price-block"><p>One-time purchase</p><strong>$29</strong><span>No subscription</span></div>`
+    : `<div class="price-block price-unavailable"><p>House File Plus</p><strong>Unavailable</strong><span>Free features continue</span></div>`
+  const purchasePanel = license.unlocked
+    ? `<div class="license-success">${icon('check')}<div><strong>House File Plus is active</strong><p>This device can hold an unlimited maintenance history.</p></div></div>`
+    : checkoutAvailability === 'available'
+      ? `<div class="purchase-actions"><a class="button primary" href="${checkoutUrl()}">Buy House File Plus — $29</a><p>Secure checkout is hosted by Sociobot/Dodo, the merchant of record. Refunds are handled there and revoke the license.</p></div>`
+      : checkoutAvailability === 'checking'
+        ? `<p class="checkout-status" role="status">Checking whether House File Plus checkout is available…</p>`
+        : checkoutAvailability === 'unavailable'
+          ? `<p class="checkout-status" role="status"><strong>House File Plus purchases are temporarily unavailable.</strong> Your free home file, exports, and offline use continue to work.</p>`
+          : checkoutAvailability === 'offline'
+            ? `<p class="checkout-status" role="status">Connect to the internet to check whether House File Plus checkout is available. Your local home file still works offline.</p>`
+            : `<p class="checkout-status" role="status">Checking whether House File Plus checkout is available…</p>`
   return `<section class="page-heading"><div><p class="sheet-label">House File Plus / One-time</p><h2>${license.unlocked ? 'Your full home file is unlocked.' : 'More room for the life of your home.'}</h2><p>Free is for starting a trustworthy record. Plus expands it for years of repairs and receipts.</p></div></section>
     <section class="upgrade-sheet">
-      <div class="price-block"><p>One-time purchase</p><strong>$29</strong><span>No subscription</span></div>
+      ${priceBlock}
       <div class="tier-comparison"><div><p class="sheet-label">Included free</p><h3>Starter file</h3><ul><li>${icon('check')}25 completed-work records</li><li>${icon('check')}One evidence file per record</li><li>${icon('check')}PDF, CSV, and full JSON backup</li><li>${icon('check')}Offline use on this device</li></ul></div><div class="plus-tier"><p class="sheet-label">House File Plus</p><h3>Long-term file</h3><ul><li>${icon('check')}Unlimited completed-work records</li><li>${icon('check')}Larger evidence files, up to 15 MB</li><li>${icon('check')}A one-time purchase, for this product</li><li>${icon('check')}All free features remain yours</li></ul></div></div>
-      ${license.unlocked ? `<div class="license-success">${icon('check')}<div><strong>House File Plus is active</strong><p>This device can hold an unlimited maintenance history.</p></div></div>` : `<div class="purchase-actions"><a class="button primary" href="${checkoutUrl()}">Buy House File Plus — $29</a><p>Secure checkout is hosted by Sociobot/Dodo, the merchant of record. Refunds are handled there and revoke the license.</p></div>
-      <details class="restore-license"><summary>Already purchased? Restore a license</summary><form id="license-form"><label>License token<input name="license" required autocomplete="off" spellcheck="false"></label><button class="button secondary" type="submit">Verify license</button></form></details>`}
+      ${purchasePanel}
+      ${license.unlocked ? '' : `<details class="restore-license"><summary>Already purchased? Restore a license</summary><form id="license-form"><label>License token<input name="license" required autocomplete="off" spellcheck="false"></label><button class="button secondary" type="submit">Verify license</button></form></details>`}
       ${license.notice ? `<p class="license-notice" role="status">${escapeHtml(license.notice)}</p>` : ''}
       <p class="legal-copy">By purchasing, you agree to the <a href="/terms/">terms</a>. See how purchase and local record data are handled in our <a href="/privacy/">privacy notice</a>.</p>
     </section>`
@@ -182,6 +197,16 @@ function bindEvents(): void {
   app.querySelector<HTMLInputElement>('#import-json')?.addEventListener('change', importJson)
   app.querySelector<HTMLFormElement>('#settings-form')?.addEventListener('submit', updateSettings)
   app.querySelector<HTMLFormElement>('#license-form')?.addEventListener('submit', restoreLicense)
+  if (currentView === 'upgrade' && !license.unlocked && checkoutAvailability === 'idle') {
+    checkoutAvailability = 'checking'
+    render()
+    void updateCheckoutAvailability()
+  }
+}
+
+async function updateCheckoutAvailability(): Promise<void> {
+  checkoutAvailability = await checkCheckoutAvailability()
+  if (currentView === 'upgrade' && !license.unlocked) render()
 }
 
 function renderKeepingFocus(id: string): void {

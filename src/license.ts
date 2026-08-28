@@ -10,10 +10,28 @@ export type LicenseState = {
   token: string
 }
 
+export type CheckoutAvailability = 'available' | 'unavailable' | 'offline'
+
 type Verdict = { valid: boolean; checkedAt: number }
 
 export function checkoutUrl(): string {
   return `${API_BASE}/api/v1/products/${SLUG}/checkout`
+}
+
+/**
+ * A registered checkout answers with a success or redirect. A missing factory
+ * product answers 404. Manual redirects keep this availability check from
+ * following a hosted checkout or payment-provider redirect.
+ */
+export async function checkCheckoutAvailability(): Promise<CheckoutAvailability> {
+  try {
+    const response = await fetch(checkoutUrl(), { redirect: 'manual' })
+    if (response.status === 404) return 'unavailable'
+    if (response.ok || (response.status >= 300 && response.status < 400) || response.type === 'opaqueredirect') return 'available'
+    return 'unavailable'
+  } catch {
+    return 'offline'
+  }
 }
 
 export function captureLicenseFromUrl(): boolean {
