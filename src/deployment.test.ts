@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 const config = JSON.parse(readFileSync(new URL('../public/staticwebapp.config.json', import.meta.url), 'utf8')) as {
   globalHeaders: Record<string, string>
+  mimeTypes: Record<string, string>
   routes: Array<{ route: string; headers: Record<string, string> }>
 }
 
@@ -16,6 +17,7 @@ describe('static deployment policy', () => {
   })
 
   it('sets correct manifest, update, and immutable asset response policies', () => {
+    expect(config.mimeTypes['.webmanifest']).toBe('application/manifest+json')
     expect(config.routes.find(({ route }) => route === '/manifest.webmanifest')?.headers['Content-Type']).toBe('application/manifest+json')
     expect(config.routes.find(({ route }) => route === '/sw.js')?.headers['Cache-Control']).toContain('no-cache')
     expect(config.routes.find(({ route }) => route === '/assets/*')?.headers['Cache-Control']).toContain('immutable')
