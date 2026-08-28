@@ -1,0 +1,10 @@
+{
+  "slug": "home-maintenance-receipts",
+  "title": "Home Maintenance Receipts",
+  "territory": "utilities",
+  "user": "Households that need to remember recurring upkeep and prove what was done, when, and with which documents when selling, insuring, or simply troubleshooting a home.",
+  "smallest_useful_product": "Offline log of appliance/system, completed task, date, provider, cost optional, next-due date, and attachment hash/link; generate a one-page-per-system PDF report.",
+  "artifact_class": "pwa-offline",
+  "monetization": "one-time",
+  "constraints": "No external storage by default; make backup/export prominent; never claim a log satisfies warranty, permit, or insurance requirements."
+}
