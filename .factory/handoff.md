@@ -22,7 +22,7 @@ The free local-first maintenance log, exports, offline operation, accessibility
 and existing Plus-license behavior are unchanged. The factory must still
 register the product before customers can buy it; this repository must not
 alter factory billing infrastructure. Once registration is complete, the
-already-integrated official link becomes available automatically.
+already-integrated official link becomes available on the visitor's next view.
 
 ## Exact regression coverage
 
@@ -62,7 +62,7 @@ Observed on 2026-08-28 UTC:
 - Unit/policy tests: 2 files, 5/5 passed.
 - ESLint and strict TypeScript: passed with no findings.
 - Production build: passed; `dist/index.html` exists. Initial app JavaScript is
-  39.41 KB raw / 13.56 KB gzip and CSS is 19.74 KB raw / 4.91 KB gzip.
+  39.41 KB raw / 13.56 KB gzip and CSS is 19.83 KB raw / 4.92 KB gzip.
 - Playwright 1.58.2: 26/26 passed (13 desktop Chromium and 13 at 390×844),
   including axe serious/critical checks in empty/form/light/dark states,
   keyboard skip link/form/Escape behavior, record persistence, PDF/backup,

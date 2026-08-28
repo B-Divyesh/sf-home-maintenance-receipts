@@ -185,6 +185,7 @@ textarea { resize: vertical; }
 .price-block span { grid-column: 2; grid-row: 1 / span 2; padding: 8px 12px; border: 1px solid var(--stamp); color: var(--stamp); font: 700 .8rem ui-monospace, SFMono-Regular, Consolas, monospace; text-transform: uppercase; transform: rotate(-2deg); }
 .price-block.price-unavailable { border-bottom-color: var(--rule); }
 .price-block.price-unavailable strong { font-size: clamp(1.7rem, 6vw, 2.6rem); letter-spacing: -.04em; }
+.price-block.price-unavailable span { border-color: var(--blue-deep); color: var(--blue-deep); }
 .tier-comparison { display: grid; grid-template-columns: 1fr 1fr; margin: 32px 0; border: 1px solid var(--rule); }
 .tier-comparison > div { padding: 24px; }
 .tier-comparison > div + div { border-left: 1px solid var(--rule); }
