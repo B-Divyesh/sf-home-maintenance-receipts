@@ -75,6 +75,8 @@ Observed on 2026-08-28 UTC:
   including axe serious/critical checks, keyboard operation, offline reload,
   record persistence, backup/export, legal pages, privacy callback handling,
   mobile sizing, and the new exact regressions.
+- Live Lighthouse 13.4.1 mobile: Performance 100, Accessibility 100, Best
+  Practices 100; FCP 1.0 s, LCP 1.2 s, TBT 0 ms, CLS 0.
 - Static policy source check confirms CSP remains self-only with only the
   Sociobot billing connection allowlist, `frame-ancestors 'none'`,
   `X-Frame-Options: DENY`, no-referrer, no-store service worker caching, and
@@ -101,10 +103,24 @@ responsibility.
 
 ## Deployment and live evidence
 
-Static deployment and post-deploy identity/response verification are performed
-by this repair work order after the committed build is pushed. Add the deployed
-revision, verification result, and any remaining external billing status here
-if the deployment system reports them separately.
+The repair commit was pushed to `main` as `8efef2a8bf3f7fea9a9688e2aba1146acbf0f94a`
+and deployed as Static Web Apps deployment
+`960a617d-34cf-4bfd-913d-3360eeade81c`.
+
+- `verify-url.sh` returned HTTP 200 in 641 ms with the correct title,
+  `lang="en"`, one h1, main landmark, image alt text, button labels, and zero
+  console/page errors.
+- All 17 publicly served files from the deployed build match local `dist/`
+  byte-for-byte by SHA-256. `staticwebapp.config.json` is intentionally not a
+  publicly served artifact.
+- Live responses confirm `Referrer-Policy: no-referrer`, the self-only CSP,
+  `frame-ancestors 'none'`, `X-Frame-Options: DENY`, and the restrictive
+  permissions policy. `sw.js` is no-cache/no-store, the manifest is
+  `application/manifest+json`, and hashed JavaScript is immutable cached.
+- A live Chromium smoke found zero console/page errors and zero axe
+  serious/critical findings in desktop and 390 px layouts. The skip link and
+  main focus worked by keyboard; a controlled offline reload rendered the full
+  app and the mobile document width equalled the 390 px viewport.
 
 ## Known gaps / next steps
 
