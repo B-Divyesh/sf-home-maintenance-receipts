@@ -118,14 +118,14 @@ function emptyState(): string {
 function recordRow(record: MaintenanceRecord): string {
   const status = dueStatus(record.nextDueDate)
   const statusText = { none: 'No next date', overdue: 'Overdue', soon: 'Due soon', scheduled: 'Scheduled' }[status]
-  return `<article class="record-row" data-record-id="${record.id}">
+  return `<article class="record-row" data-record-id="${escapeHtml(record.id)}">
     <div class="record-index" aria-hidden="true">${String(records.indexOf(record) + 1).padStart(2, '0')}</div>
     <div class="record-main"><p class="system-name">${escapeHtml(record.system)}</p><h4>${escapeHtml(record.task)}</h4><p>${formatDate(record.completedDate)}${record.provider ? ` · ${escapeHtml(record.provider)}` : ''}${record.cost !== null ? ` · ${formatMoney(record.cost)}` : ''}</p>
       ${record.notes ? `<p class="record-notes">${escapeHtml(record.notes)}</p>` : ''}
-      <div class="record-evidence">${record.attachmentId ? `<button class="evidence-link" data-attachment="${record.attachmentId}">${icon('paperclip')}<span>${escapeHtml(record.attachmentName ?? 'Evidence file')}</span><small>SHA-256 ${record.attachmentHash?.slice(0, 10)}…</small></button>` : '<span class="muted">No evidence attached</span>'}</div>
+      <div class="record-evidence">${record.attachmentId ? `<button class="evidence-link" data-attachment="${escapeHtml(record.attachmentId)}">${icon('paperclip')}<span>${escapeHtml(record.attachmentName ?? 'Evidence file')}</span><small>SHA-256 ${record.attachmentHash?.slice(0, 10)}…</small></button>` : '<span class="muted">No evidence attached</span>'}</div>
     </div>
     <div class="record-due"><span class="due ${status}">${icon('calendar')}${statusText}</span><strong>${record.nextDueDate ? formatDate(record.nextDueDate) : '—'}</strong></div>
-    <div class="record-actions"><button class="icon-button" data-edit="${record.id}" aria-label="Edit ${escapeHtml(record.task)}">${icon('edit')}</button><button class="icon-button danger-button" data-delete="${record.id}" aria-label="Delete ${escapeHtml(record.task)}">${icon('trash')}</button></div>
+    <div class="record-actions"><button class="icon-button" data-edit="${escapeHtml(record.id)}" aria-label="Edit ${escapeHtml(record.task)}">${icon('edit')}</button><button class="icon-button danger-button" data-delete="${escapeHtml(record.id)}" aria-label="Delete ${escapeHtml(record.task)}">${icon('trash')}</button></div>
   </article>`
 }
 
@@ -389,7 +389,8 @@ async function start(): Promise<void> {
       if (receivedLicense) toast(license.unlocked ? 'Purchase restored. House File Plus is active.' : license.notice)
     }
   } catch (caught) {
-    app.innerHTML = `<main id="main" class="fatal-error"><p class="sheet-label">Local file unavailable</p><h1>Your home file could not open.</h1><p>${escapeHtml(caught instanceof Error ? caught.message : 'This browser did not provide private local storage.')}</p><p>Check that private browsing restrictions are disabled, then reload. No remote copy exists.</p><button class="button primary" onclick="location.reload()">Try again</button></main>`
+    app.innerHTML = `<main id="main" class="fatal-error"><p class="sheet-label">Local file unavailable</p><h1>Your home file could not open.</h1><p>${escapeHtml(caught instanceof Error ? caught.message : 'This browser did not provide private local storage.')}</p><p>Check that private browsing restrictions are disabled, then reload. No remote copy exists.</p><button class="button primary" id="retry-startup">Try again</button></main>`
+    app.querySelector('#retry-startup')?.addEventListener('click', () => window.location.reload())
   }
 }
 

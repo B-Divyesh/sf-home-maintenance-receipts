@@ -1,4 +1,4 @@
-const VERSION = 'hmr-v4'
+const VERSION = 'hmr-v5'
 const SHELL_CACHE = `${VERSION}-shell`
 const RUNTIME_CACHE = `${VERSION}-runtime`
 const APP_ASSETS = [] /* __APP_ASSETS__ */
@@ -11,6 +11,10 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(Promise.all([
     caches.keys().then((keys) => Promise.all(keys.filter((key) => ![SHELL_CACHE, RUNTIME_CACHE].includes(key)).map((key) => caches.delete(key)))),
+    caches.open(RUNTIME_CACHE).then(async (cache) => {
+      const requests = await cache.keys()
+      await Promise.all(requests.filter((request) => new URL(request.url).searchParams.has('license')).map((request) => cache.delete(request)))
+    }),
     self.clients.claim(),
   ]))
 })
@@ -26,8 +30,12 @@ self.addEventListener('fetch', (event) => {
 
   if (event.request.mode === 'navigate') {
     event.respondWith(fetch(event.request).then((response) => {
-      const copy = response.clone()
-      caches.open(RUNTIME_CACHE).then((cache) => cache.put(event.request, copy))
+      // License callbacks are intentionally captured into local storage and
+      // removed from the address bar. Never retain their token in CacheStorage.
+      if (!url.searchParams.has('license')) {
+        const copy = response.clone()
+        caches.open(RUNTIME_CACHE).then((cache) => cache.put(event.request, copy))
+      }
       return response
     }).catch(async () => (await caches.match(event.request, { ignoreVary: true })) || (await caches.match('/index.html')) || (await caches.match('/offline.html'))))
     return

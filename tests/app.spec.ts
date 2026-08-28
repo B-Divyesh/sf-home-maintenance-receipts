@@ -18,6 +18,8 @@ function backupFile(data: unknown) {
 }
 
 const settings = { homeName: 'My home', address: '', theme: 'system' }
+const recordId = '11111111-1111-4111-8111-111111111111'
+const attachmentId = '22222222-2222-4222-8222-222222222222'
 
 test('logs completed work, hashes evidence, and survives reload', async ({ page }) => {
   const errors: string[] = []
@@ -115,7 +117,7 @@ test('rejects incomplete and hash-tampered backups without replacing current rec
     version: 1,
     exportedAt: '2026-08-28T00:00:00.000Z',
     settings,
-    records: [{ id: 'incomplete-record' }],
+    records: [{ id: recordId }],
     attachments: [],
   }))
   await expect(page.getByText(/Record 1 has an invalid appliance or system/)).toBeVisible()
@@ -128,11 +130,11 @@ test('rejects incomplete and hash-tampered backups without replacing current rec
     exportedAt: '2026-08-28T00:00:00.000Z',
     settings,
     records: [{
-      id: 'record-with-evidence', system: 'Roof', task: 'Inspected flashing', completedDate: '2026-08-28', provider: '', cost: null,
-      nextDueDate: '', notes: '', attachmentId: 'evidence-1', attachmentName: 'receipt.txt', attachmentType: 'text/plain',
+      id: recordId, system: 'Roof', task: 'Inspected flashing', completedDate: '2026-08-28', provider: '', cost: null,
+      nextDueDate: '', notes: '', attachmentId, attachmentName: 'receipt.txt', attachmentType: 'text/plain',
       attachmentHash: zeroHash, createdAt: '2026-08-28T00:00:00.000Z', updatedAt: '2026-08-28T00:00:00.000Z',
     }],
-    attachments: [{ id: 'evidence-1', name: 'receipt.txt', type: 'text/plain', size: 8, hash: zeroHash, dataUrl: 'data:text/plain;base64,dGFtcGVyZWQ=' }],
+    attachments: [{ id: attachmentId, name: 'receipt.txt', type: 'text/plain', size: 8, hash: zeroHash, dataUrl: 'data:text/plain;base64,dGFtcGVyZWQ=' }],
   }))
   await expect(page.getByText(/Evidence file 1 does not match its SHA-256/)).toBeVisible()
   await expect(page.getByRole('button', { name: 'Replace and restore' })).toHaveCount(0)
@@ -140,6 +142,91 @@ test('rejects incomplete and hash-tampered backups without replacing current rec
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Keep this record' })).toBeVisible()
   await expect(page.getByText('Your home file could not open.')).toHaveCount(0)
+})
+
+test('rejects a crafted backup identifier before it can alter the ledger markup', async ({ page }) => {
+  await page.goto('/')
+  await createRecord(page, 'Keep this safe')
+  await page.getByRole('button', { name: 'Backup & home' }).click()
+
+  await page.locator('#import-json').setInputFiles(backupFile({
+    format: 'home-maintenance-receipts',
+    version: 1,
+    exportedAt: '2026-08-28T00:00:00.000Z',
+    settings,
+    records: [{
+      id: 'qa\"><p id="injected-marker">Injected backup markup</p><span data-qa="',
+      system: 'Roof', task: 'Inspected flashing', completedDate: '2026-08-28', provider: '', cost: null,
+      nextDueDate: '', notes: '', attachmentId: null, attachmentName: null, attachmentType: null, attachmentHash: null,
+      createdAt: '2026-08-28T00:00:00.000Z', updatedAt: '2026-08-28T00:00:00.000Z',
+    }],
+    attachments: [],
+  }))
+
+  await expect(page.getByText('Record 1 has an invalid identifier. No data was changed.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Replace and restore' })).toHaveCount(0)
+  await expect(page.locator('#injected-marker')).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Keep this safe' })).toBeVisible()
+})
+
+test('binds fatal-storage recovery without an inline handler under the production CSP', async ({ page }) => {
+  let documentRequests = 0
+  page.on('request', (request) => { if (request.isNavigationRequest()) documentRequests += 1 })
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'indexedDB', {
+      configurable: true,
+      value: { open: () => { throw new Error('IndexedDB unavailable for this test') } },
+    })
+  })
+  await page.route('**/*', async (route) => {
+    if (!route.request().isNavigationRequest()) return route.continue()
+    const response = await route.fetch()
+    await route.fulfill({
+      response,
+      headers: { ...response.headers(), 'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'" },
+    })
+  })
+
+  await page.goto('/')
+  const retry = page.getByRole('button', { name: 'Try again' })
+  await expect(page.getByRole('heading', { name: 'Your home file could not open.' })).toBeVisible()
+  await expect(retry).not.toHaveAttribute('onclick')
+  await retry.click()
+  await expect.poll(() => documentRequests).toBeGreaterThanOrEqual(2)
+  await expect(page.getByRole('heading', { name: 'Your home file could not open.' })).toBeVisible()
+})
+
+test('does not retain a license callback token in service-worker cache keys', async ({ page }) => {
+  await page.route('https://api.sociobot.in/**', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ valid: false, reason: 'invalid', expires_at: null }),
+  }))
+  await page.goto('/')
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => true))
+  await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller))
+
+  await page.goto('/?license=qa-secret-regression-token')
+  await expect(page).not.toHaveURL(/license=/)
+  await expect.poll(async () => page.evaluate(async () => {
+    const keys = await caches.keys()
+    const requests = await Promise.all(keys.map(async (key) => (await caches.open(key)).keys()))
+    return requests.flat().map((request) => request.url).filter((url) => new URL(url).searchParams.has('license'))
+  })).toEqual([])
+})
+
+test('supports the primary record workflow by keyboard', async ({ page }) => {
+  await page.goto('/')
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('link', { name: 'Skip to main content' })).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(page.locator('main')).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(page.getByRole('button', { name: 'Log completed work' })).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(page.getByLabel('Appliance or system *')).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: 'Log completed work' })).toBeFocused()
 })
 
 test('rejects whitespace-only record identity fields', async ({ page }) => {

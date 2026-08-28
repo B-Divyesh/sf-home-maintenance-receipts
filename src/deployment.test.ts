@@ -14,6 +14,7 @@ describe('static deployment policy', () => {
     expect(config.globalHeaders['Content-Security-Policy']).toContain("connect-src 'self' https://api.sociobot.in")
     expect(config.globalHeaders['X-Frame-Options']).toBe('DENY')
     expect(config.globalHeaders['Permissions-Policy']).toContain('camera=()')
+    expect(config.globalHeaders['Referrer-Policy']).toBe('no-referrer')
   })
 
   it('sets correct manifest, update, and immutable asset response policies', () => {
