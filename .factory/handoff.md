@@ -76,16 +76,26 @@ no-cache service worker, and immutable hashed assets.
 
 ## Deployment and live verification
 
-The work order deploys `dist/` as a static app at
-`https://home-maintenance-receipts.sociobot.in`. After deployment, run:
+Commit `1965b5a1cfc84f667d42dfa4eb99f2d1f88f94cb` was pushed to `main` and
+deployed as Static Web Apps deployment
+`34c749e9-472b-4b3f-a0f5-31c87abbfed7` at
+<https://home-maintenance-receipts.sociobot.in>.
 
-```sh
-/opt/fleet/lib/verify-url.sh https://home-maintenance-receipts.sociobot.in /tmp/hmr-verify
-```
+- `verify-url.sh` returned HTTPS 200 in 785 ms with the correct title,
+  `lang="en"`, one h1, main landmark, image alt text, labelled controls, and
+  zero console/page errors on load.
+- Fresh desktop and 390×844 browser contexts opened **Unlock Plus** against
+  the live 404 endpoint. Both rendered no Buy link and no `$29` price, had no
+  horizontal overflow, and had zero axe serious/critical findings in the
+  unavailable-purchase state.
+- Live HTML references `app-D9WvFPPl.js` and `app-B-LEYavV.css`, the current
+  production build. Live headers retain the self-only CSP with the Sociobot
+  billing allowlist, `no-referrer`, `X-Frame-Options: DENY`, restrictive
+  Permissions-Policy, and HSTS.
 
-Then open **Unlock Plus** from the live app. Until factory registration is
-complete, the expected state is the temporary-unavailability message without a
-Buy link; after registration, the official buy link should appear.
+The 404 availability request is an intentional response to the missing
+factory product; it is handled as an unavailable purchase rather than a link
+to a failed checkout page.
 
 ## Known follow-up
 
