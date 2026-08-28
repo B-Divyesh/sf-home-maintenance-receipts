@@ -48,12 +48,16 @@ export async function getRecords(): Promise<MaintenanceRecord[]> {
   return records.sort((a, b) => b.completedDate.localeCompare(a.completedDate))
 }
 
-export async function saveRecord(record: MaintenanceRecord, evidence?: EvidenceFile): Promise<void> {
+export async function saveRecord(record: MaintenanceRecord, evidence?: EvidenceFile, previousAttachmentId?: string | null): Promise<void> {
   const database = await openDatabase()
   const stores = evidence ? ['records', 'attachments'] : ['records']
   const transaction = database.transaction(stores, 'readwrite')
   transaction.objectStore('records').put(record)
-  if (evidence) transaction.objectStore('attachments').put(evidence)
+  if (evidence) {
+    const attachmentStore = transaction.objectStore('attachments')
+    attachmentStore.put(evidence)
+    if (previousAttachmentId && previousAttachmentId !== evidence.id) attachmentStore.delete(previousAttachmentId)
+  }
   await transactionDone(transaction)
   database.close()
 }

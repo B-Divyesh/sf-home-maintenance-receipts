@@ -1,7 +1,7 @@
-const VERSION = 'hmr-v1'
+const VERSION = 'hmr-v3'
 const SHELL_CACHE = `${VERSION}-shell`
 const RUNTIME_CACHE = `${VERSION}-runtime`
-const SHELL = ['/', '/index.html', '/offline.html', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/assets/blueprint-desk.webp', '/assets/blueprint-desk.jpg']
+const SHELL = ['/', '/index.html', '/offline.html', '/privacy/', '/terms/', '/legal.css', '/manifest.webmanifest', '/assets/app.js', '/assets/app.css', '/icons/icon-192.png', '/icons/icon-512.png', '/assets/blueprint-desk.webp', '/assets/blueprint-desk.jpg']
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL)))

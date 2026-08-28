@@ -245,7 +245,7 @@ async function submitRecord(form: HTMLFormElement, dialog: HTMLDialogElement): P
       attachmentName: evidence?.name ?? editing?.attachmentName ?? null, attachmentType: evidence?.type ?? editing?.attachmentType ?? null,
       attachmentHash: evidence?.hash ?? editing?.attachmentHash ?? null, createdAt: editing?.createdAt ?? now, updatedAt: now,
     }
-    await saveRecord(value, evidence)
+    await saveRecord(value, evidence, editing?.attachmentId)
     records = await getRecords()
     dialog.close(); dialog.remove(); editing = null; render(); toast(recordSavedMessage(value, Boolean(evidence)))
   } catch (caught) {
@@ -325,7 +325,7 @@ function toast(message: string, action?: string): void {
 
 function registerServiceWorker(): void {
   if (!('serviceWorker' in navigator)) return
-  window.addEventListener('load', () => {
+  const register = () => {
     navigator.serviceWorker.register('/sw.js').then((registration) => {
       if (registration.waiting) showUpdate(registration.waiting)
       registration.addEventListener('updatefound', () => {
@@ -333,8 +333,10 @@ function registerServiceWorker(): void {
         worker?.addEventListener('statechange', () => { if (worker.state === 'installed' && navigator.serviceWorker.controller) showUpdate(worker) })
       })
     }).catch(() => toast('Offline setup is unavailable in this browser.'))
-    navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload())
-  })
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (updateWorker) window.location.reload() })
+  }
+  if (document.readyState === 'complete') register()
+  else window.addEventListener('load', register, { once: true })
 }
 
 function showUpdate(worker: ServiceWorker): void {
@@ -345,13 +347,17 @@ function showUpdate(worker: ServiceWorker): void {
 
 async function start(): Promise<void> {
   try {
-    captureLicenseFromUrl()
+    const receivedLicense = captureLicenseFromUrl()
     license = initialLicenseState()
     ;[records, settings] = await Promise.all([getRecords(), getSettings()])
     applyTheme(); render(); registerServiceWorker()
     window.addEventListener('online', () => { render(); toast('Back online. Your local records stayed available.') })
     window.addEventListener('offline', () => { render(); toast('You’re offline. Your home file still works.') })
-    if (license.token) { license = await verifyLicense(); if (currentView === 'upgrade') render() }
+    if (license.token) {
+      license = await verifyLicense()
+      if (currentView === 'upgrade') render()
+      if (receivedLicense) toast(license.unlocked ? 'Purchase restored. House File Plus is active.' : license.notice)
+    }
   } catch (caught) {
     app.innerHTML = `<main id="main" class="fatal-error"><p class="sheet-label">Local file unavailable</p><h1>Your home file could not open.</h1><p>${escapeHtml(caught instanceof Error ? caught.message : 'This browser did not provide private local storage.')}</p><p>Check that private browsing restrictions are disabled, then reload. No remote copy exists.</p><button class="button primary" onclick="location.reload()">Try again</button></main>`
   }
