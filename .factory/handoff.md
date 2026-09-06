@@ -124,3 +124,25 @@ flow were added.
 This is a static PWA with no product backend, tenant service, server health
 endpoint, or product-side rate limiter. Backend persistence and restart checks
 therefore do not apply.
+
+## Independent verification 5
+
+**PASS** on 2026-09-06 UTC. Implementation reviewed:
+`e06a2ccf83e57828131697cfa5a4ff7022aecb28`; documentation reviewed:
+`ffb8f548750df9e2bd7c473428c90be44ceb1f6c`.
+
+An independent detached-clean-checkout run passed 7/7 unit tests, lint, strict
+typecheck, production build, 70/70 Playwright tests, both audits, and all 18
+declared claim commands when run separately. Fresh live desktop and phone
+contexts verified the first screen, one-click isolated sample, reset, exit to
+an empty real log, offline demo reload, route titles, legal pages, designed 404,
+accessibility scans, PWA manifest/installability, security headers, and the
+unavailable-checkout state. There were zero findings and zero untested claims.
+
+The only external dependency remains billing registration. The current live
+404 is deliberately hidden behind an unavailable-purchases message; no price or
+purchase link appears, and free use remains intact. It is not a product defect.
+
+For a repeatable verification, use the clean-checkout commands listed above and
+then run every exact command in `.factory/claims.json`; live evidence and the
+full independent report are in `.factory/verification-5.md`.
