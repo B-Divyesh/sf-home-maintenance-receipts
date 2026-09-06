@@ -1,8 +1,8 @@
-const VERSION = 'hmr-v5'
+const VERSION = 'hmr-v6'
 const SHELL_CACHE = `${VERSION}-shell`
 const RUNTIME_CACHE = `${VERSION}-runtime`
 const APP_ASSETS = [] /* __APP_ASSETS__ */
-const SHELL = ['/', '/index.html', '/offline.html', '/offline.css', '/privacy/', '/terms/', '/legal.css', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/assets/blueprint-desk.webp', '/assets/blueprint-desk.jpg', ...APP_ASSETS]
+const SHELL = ['/', '/index.html', '/offline.html', '/offline.css', '/404.html', '/privacy/', '/terms/', '/legal.css', '/manifest.webmanifest', '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png', '/assets/blueprint-desk.webp', '/assets/blueprint-desk.jpg', '/assets/social-card.jpg', ...APP_ASSETS]
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL)))

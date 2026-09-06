@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run src",
     "test:e2e": "playwright test",
+    "test:claims": "playwright test tests/claims.spec.ts",
     "check": "tsc -b",
     "lint": "eslint ."
   },

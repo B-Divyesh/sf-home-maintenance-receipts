@@ -1,23 +1,38 @@
 import './style.css'
 import { downloadBackup, downloadCsv, parseBackup } from './backup'
+import { createDemoData } from './demo'
 import { captureLicenseFromUrl, checkCheckoutAvailability, checkoutUrl, initialLicenseState, storeLicense, verifyLicense, type CheckoutAvailability, type LicenseState } from './license'
 import { downloadPdf } from './report'
-import { deleteRecord, getAttachment, getAttachments, getRecords, getSettings, replaceAll, saveRecord, saveSettings } from './storage'
+import { clearCurrentDatabase, configureStorage, deleteRecord, getAttachment, getAttachments, getRecords, getSettings, replaceAll, saveRecord, saveSettings } from './storage'
 import type { EvidenceFile, MaintenanceRecord, Settings } from './types'
 import { dueStatus, formatDate, formatMoney, groupBySystem, hashFile, makeId } from './utils'
 
-type View = 'log' | 'reports' | 'backup' | 'upgrade'
+type View = 'landing' | 'log' | 'reports' | 'backup' | 'upgrade' | 'notfound'
 
 const app = document.querySelector<HTMLDivElement>('#app')!
 let records: MaintenanceRecord[] = []
 let settings: Settings = { homeName: 'My home', address: '', theme: 'system' }
-let license: LicenseState = initialLicenseState()
+let license: LicenseState = { unlocked: false, checking: false, notice: '', token: '' }
 let checkoutAvailability: CheckoutAvailability | 'idle' | 'checking' = 'idle'
-let currentView: View = 'log'
+let currentView: View = 'landing'
+let demoMode = false
 let query = ''
 let statusFilter = 'all'
 let editing: MaintenanceRecord | null = null
 let updateWorker: ServiceWorker | null = null
+const BUILD_ID = '1.1.0'
+
+const routeMeta: Record<View, { title: string; description: string }> = {
+  landing: {
+    title: 'Home Maintenance Receipts — Keep completed work',
+    description: 'Keep dates, providers, costs, and receipts for completed home maintenance in a local record you can export.',
+  },
+  log: { title: 'Maintenance log — Home Maintenance Receipts', description: 'Add and find completed home maintenance records and their receipts.' },
+  reports: { title: 'System reports — Home Maintenance Receipts', description: 'Create a PDF report with one page for each home system.' },
+  backup: { title: 'Backup — Home Maintenance Receipts', description: 'Export or restore your complete local home maintenance record.' },
+  upgrade: { title: 'House File Plus — Home Maintenance Receipts', description: 'See the record and attachment limits for Home Maintenance Receipts.' },
+  notfound: { title: 'Page not found — Home Maintenance Receipts', description: 'The requested Home Maintenance Receipts page could not be found.' },
+}
 
 const icon = (name: 'file' | 'report' | 'backup' | 'key' | 'plus' | 'search' | 'paperclip' | 'calendar' | 'download' | 'edit' | 'trash' | 'check') => {
   const paths: Record<string, string> = {
@@ -49,28 +64,74 @@ function applyTheme(): void {
   document.documentElement.dataset.theme = settings.theme
 }
 
+function parseRoute(pathname = window.location.pathname): { view: View; demo: boolean } {
+  const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
+  const realRoutes: Record<string, View> = { '/': 'landing', '/log': 'log', '/reports': 'reports', '/backup': 'backup', '/plus': 'upgrade' }
+  if (path in realRoutes) return { view: realRoutes[path], demo: false }
+  if (path === '/demo') return { view: 'log', demo: true }
+  const demoRoutes: Record<string, View> = { '/demo/reports': 'reports', '/demo/backup': 'backup', '/demo/plus': 'upgrade' }
+  if (path in demoRoutes) return { view: demoRoutes[path], demo: true }
+  return { view: 'notfound', demo: false }
+}
+
+function viewPath(view: View): string {
+  if (view === 'landing') return '/'
+  if (view === 'notfound') return window.location.pathname
+  const segment = view === 'upgrade' ? 'plus' : view
+  return demoMode ? (view === 'log' ? '/demo' : `/demo/${segment}`) : `/${segment}`
+}
+
+function setRouteMetadata(): void {
+  const meta = routeMeta[currentView]
+  const title = demoMode ? `Demo — Home Maintenance Receipts${currentView === 'log' ? '' : ` — ${meta.title.split(' — ')[0]}`}` : meta.title
+  const canonicalPath = demoMode ? viewPath(currentView) : currentView === 'notfound' ? '/404' : viewPath(currentView)
+  const url = `https://home-maintenance-receipts.sociobot.in${canonicalPath}`
+  document.title = title
+  document.querySelector<HTMLMetaElement>('meta[name="description"]')?.setAttribute('content', meta.description)
+  document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.setAttribute('href', url)
+  document.querySelector<HTMLMetaElement>('meta[property="og:title"]')?.setAttribute('content', title)
+  document.querySelector<HTMLMetaElement>('meta[property="og:description"]')?.setAttribute('content', meta.description)
+  document.querySelector<HTMLMetaElement>('meta[property="og:url"]')?.setAttribute('content', url)
+  document.querySelector<HTMLMetaElement>('meta[name="twitter:title"]')?.setAttribute('content', title)
+  document.querySelector<HTMLMetaElement>('meta[name="twitter:description"]')?.setAttribute('content', meta.description)
+}
+
 function shell(content: string): string {
   const overdue = records.filter((record) => dueStatus(record.nextDueDate) === 'overdue').length
+  const leave = demoMode ? 'data-leave-demo' : ''
   return `
     <header class="app-header">
-      <div class="brand-mark" aria-hidden="true"><span></span></div>
-      <div class="brand-copy"><p class="eyebrow">Private home file / 01</p><h1>Home Maintenance<br><span>Receipts</span></h1></div>
-      <div class="local-state"><span class="status-dot"></span><span><strong>Saved on this device</strong><small>${navigator.onLine ? 'Ready offline' : 'Working offline'}</small></span></div>
+      <a class="brand-link" href="/" ${leave} aria-label="Home Maintenance Receipts home"><span class="brand-mark" aria-hidden="true"><span></span></span><span class="brand-copy"><span class="eyebrow">Local maintenance records</span><strong>Home Maintenance<br><span>Receipts</span></strong></span></a>
+      <div class="local-state"><span class="status-dot"></span><span><strong>${demoMode ? 'Sample data only' : 'Saved on this device'}</strong><small>${navigator.onLine ? 'Available offline' : 'Working offline'}</small></span></div>
     </header>
-    <nav class="app-nav" aria-label="Home file">
-      ${navButton('log', 'file', 'Maintenance log', records.length ? String(records.length) : '')}
-      ${navButton('reports', 'report', 'System reports', '')}
-      ${navButton('backup', 'backup', 'Backup & home', overdue ? String(overdue) : '')}
-      ${navButton('upgrade', 'key', license.unlocked ? 'House File Plus' : 'Unlock Plus', '')}
+    <nav class="app-nav" aria-label="Main navigation">
+      ${navLink('log', 'file', 'Maintenance log', records.length ? String(records.length) : '')}
+      ${navLink('reports', 'report', 'System reports', '')}
+      ${navLink('backup', 'backup', 'Backup', overdue ? String(overdue) : '')}
+      <a class="nav-button" href="/demo">${icon('check')}<span>${demoMode ? 'Sample data' : 'Try sample data'}</span></a>
     </nav>
-    <main id="main" tabindex="-1">${content}</main>
-    <footer><p>Your records stay in this browser unless you export them.</p><nav aria-label="Legal"><a href="/privacy/">Privacy</a><a href="/terms/">Terms</a></nav><p class="generated-note">Blueprint desk image generated for this product.</p></footer>
+    <main id="main" tabindex="-1">${demoMode ? `<aside class="demo-banner" aria-label="Demo mode"><strong>Demo — sample data, nothing is saved</strong><span>Changes stay separate from your home file.</span><button id="reset-demo" class="text-button">Reset demo</button><a href="/log" id="start-real">Start for real</a></aside>` : ''}${content}</main>
+    <footer><p>Keep dates, providers, costs, and receipts for completed home maintenance.</p><nav aria-label="Legal"><a href="/privacy/" ${leave}>Privacy</a><a href="/terms/" ${leave}>Terms</a></nav><p class="factory-note">Built by Param Factory · Build ${BUILD_ID}</p><p class="generated-note">Original blueprint desk image generated for this product.</p></footer>
     <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+    <div class="sr-only" id="route-status" aria-live="polite" aria-atomic="true"></div>
   `
 }
 
-function navButton(view: View, iconName: Parameters<typeof icon>[0], label: string, count: string): string {
-  return `<button class="nav-button ${currentView === view ? 'active' : ''}" data-view="${view}" ${currentView === view ? 'aria-current="page"' : ''}>${icon(iconName)}<span>${label}</span>${count ? `<b>${count}</b>` : ''}</button>`
+function navLink(view: View, iconName: Parameters<typeof icon>[0], label: string, count: string): string {
+  return `<a class="nav-button ${currentView === view ? 'active' : ''}" href="${viewPath(view)}" data-route="${view}" ${currentView === view ? 'aria-current="page"' : ''}>${icon(iconName)}<span>${label}</span>${count ? `<b>${count}</b>` : ''}</a>`
+}
+
+function landingView(): string {
+  const paid = checkoutAvailability === 'available'
+    ? `<p class="paid-price"><strong>$29 once.</strong> No subscription.</p><a class="button secondary" href="/plus" data-route="upgrade">See House File Plus</a>`
+    : checkoutAvailability === 'unavailable'
+      ? '<p><strong>Purchases are unavailable.</strong> The free record, exports, and offline use still work.</p><a class="button secondary" href="/plus" data-route="upgrade">See free and paid limits</a>'
+      : '<p role="status">Checking whether House File Plus is available…</p>'
+  return `<section class="landing-hero" aria-labelledby="landing-title"><div class="landing-copy"><p class="sheet-label">Home upkeep record</p><h1 id="landing-title" tabindex="-1">Keep proof of completed home maintenance</h1><p class="audience">For households that need dates, providers, and receipts ready when they sell, insure, or troubleshoot a home.</p><div class="hero-actions"><a class="button primary" href="/demo">Try it with sample data</a><span>Opens three completed jobs with receipts.</span><a class="text-link" href="/log" data-route="log">Start your own record</a></div><ul class="plain-facts"><li>Records stay on this device.</li><li>Works offline after the first visit.</li><li>Free for up to 25 records.</li></ul></div><picture><source srcset="/assets/blueprint-desk.webp" type="image/webp"><img src="/assets/blueprint-desk.jpg" width="768" height="512" alt="A home plan, receipt, ruler, pencil, and wrench arranged on a blueprint desk" fetchpriority="high" decoding="async"></picture></section>
+    <section class="landing-preview" aria-labelledby="preview-title"><div><p class="sheet-label">Sample maintenance log</p><h2 id="preview-title">See the details you can find later</h2><p>Each row keeps the completed task, date, provider, cost, next date, and evidence hash together.</p></div><ol><li><strong>Heating & cooling</strong><span>Replaced furnace filter · Self · $27.84</span><small>Receipt attached · Next date recorded</small></li><li><strong>Roof & gutters</strong><span>Cleared gutters · Northside Home Care · $165.00</span><small>Invoice attached · Due soon</small></li><li><strong>Water heater</strong><span>Flushed tank · Maple Plumbing · $189.00</span><small>Service note attached · Next year</small></li></ol></section>
+    <section class="landing-section" aria-labelledby="how-title"><p class="sheet-label">How it works</p><h2 id="how-title">Keep each job in three steps</h2><ol class="steps"><li><span>01</span><div><h3>Log completed work</h3><p>Add the system, task, date, provider, cost, and next due date.</p></div></li><li><span>02</span><div><h3>Attach the evidence</h3><p>Add one receipt, photo, PDF, or text file to the record.</p></div></li><li><span>03</span><div><h3>Export a copy</h3><p>Download a PDF report, spreadsheet, or complete JSON backup.</p></div></li></ol></section>
+    <section class="landing-section limits-section" aria-labelledby="limits-title"><p class="sheet-label">Limits and privacy</p><h2 id="limits-title">Know what this record does</h2><div><p>Your records and attachments stay in this browser unless you export them.</p><p>This tool does not inspect work, book contractors, diagnose problems, or prove compliance.</p><p>Browser storage can be cleared. Download a JSON backup and keep it somewhere you control.</p></div></section>
+    <section class="landing-section paid-section" aria-labelledby="paid-title"><p class="sheet-label">Optional paid tier</p><h2 id="paid-title">House File Plus</h2><p>Free use includes 25 records and evidence files up to 5 MB. Plus raises those limits.</p>${paid}</section>`
 }
 
 function filteredRecords(): MaintenanceRecord[] {
@@ -87,7 +148,7 @@ function logView(): string {
   const results = filteredRecords()
   return `
     <section class="page-heading">
-      <div><p class="sheet-label">Sheet 01 / Maintenance log</p><h2>${escapeHtml(settings.homeName)}</h2><p>Find the work, date, provider, and proof behind your home.</p></div>
+      <div><p class="sheet-label">Maintenance log</p><h1 tabindex="-1">${escapeHtml(settings.homeName)} maintenance log</h1><p>Find completed work by date, provider, next due date, or attached receipt.</p></div>
       <button class="button primary" id="add-record">${icon('plus')}Log completed work</button>
     </section>
     ${records.length === 0 ? emptyState() : `
@@ -98,20 +159,20 @@ function logView(): string {
         <div><span>With evidence</span><strong>${evidence}</strong></div>
       </section>
       <section class="ledger-section" aria-labelledby="ledger-title">
-        <div class="ledger-tools"><div><p class="sheet-label">Evidence index</p><h3 id="ledger-title">Completed work</h3></div>
+        <div class="ledger-tools"><div><p class="sheet-label">Evidence index</p><h2 id="ledger-title">Completed work</h2></div>
           <div class="filters">
             <label class="search-field"><span class="sr-only">Search records</span>${icon('search')}<input id="search" type="search" value="${escapeHtml(query)}" placeholder="Search system, task, provider"></label>
             <label><span class="sr-only">Filter records</span><select id="status-filter"><option value="all">All records</option><option value="overdue" ${statusFilter === 'overdue' ? 'selected' : ''}>Overdue</option><option value="soon" ${statusFilter === 'soon' ? 'selected' : ''}>Due soon</option><option value="evidence" ${statusFilter === 'evidence' ? 'selected' : ''}>Has evidence</option></select></label>
           </div>
         </div>
-        <div class="record-list">${results.length ? results.map(recordRow).join('') : `<div class="no-results"><p>No records match those marks.</p><button class="text-button" id="clear-filters">Clear search and filters</button></div>`}</div>
+        <div class="record-list">${results.length ? results.map(recordRow).join('') : `<div class="no-results"><p>No records match your search and filters.</p><button class="text-button" id="clear-filters">Clear search and filters</button></div>`}</div>
       </section>`}
   `
 }
 
 function emptyState(): string {
   return `<section class="empty-state">
-    <div class="empty-copy"><p class="sheet-label">Blank sheet / ready</p><h3>Start your home’s paper trail.</h3><p>Log one completed job—like a furnace filter change or gutter cleaning. Add the receipt or photo, and this device keeps it available offline.</p><button class="button primary" id="empty-add">${icon('plus')}Log your first job</button><p class="fine-print">No account. Nothing is uploaded.</p></div>
+    <div class="empty-copy"><p class="sheet-label">No completed work yet</p><h2>Log your first completed job</h2><p>Add its date, provider, cost, next due date, and receipt when available.</p><button class="button primary" id="empty-add">${icon('plus')}Log your first job</button><p class="fine-print">No account is needed. Records stay on this device.</p></div>
     <picture><source srcset="/assets/blueprint-desk.webp" type="image/webp"><img src="/assets/blueprint-desk.jpg" width="768" height="512" alt="A blueprint desk arranged with a home plan, maintenance receipt, ruler, pencil, and wrench" fetchpriority="high" decoding="async"></picture>
   </section>`
 }
@@ -121,7 +182,7 @@ function recordRow(record: MaintenanceRecord): string {
   const statusText = { none: 'No next date', overdue: 'Overdue', soon: 'Due soon', scheduled: 'Scheduled' }[status]
   return `<article class="record-row" data-record-id="${escapeHtml(record.id)}">
     <div class="record-index" aria-hidden="true">${String(records.indexOf(record) + 1).padStart(2, '0')}</div>
-    <div class="record-main"><p class="system-name">${escapeHtml(record.system)}</p><h4>${escapeHtml(record.task)}</h4><p>${formatDate(record.completedDate)}${record.provider ? ` · ${escapeHtml(record.provider)}` : ''}${record.cost !== null ? ` · ${formatMoney(record.cost)}` : ''}</p>
+    <div class="record-main"><p class="system-name">${escapeHtml(record.system)}</p><h3>${escapeHtml(record.task)}</h3><p>${formatDate(record.completedDate)}${record.provider ? ` · ${escapeHtml(record.provider)}` : ''}${record.cost !== null ? ` · ${formatMoney(record.cost)}` : ''}</p>
       ${record.notes ? `<p class="record-notes">${escapeHtml(record.notes)}</p>` : ''}
       <div class="record-evidence">${record.attachmentId ? `<button class="evidence-link" data-attachment="${escapeHtml(record.attachmentId)}">${icon('paperclip')}<span>${escapeHtml(record.attachmentName ?? 'Evidence file')}</span><small>SHA-256 ${record.attachmentHash?.slice(0, 10)}…</small></button>` : '<span class="muted">No evidence attached</span>'}</div>
     </div>
@@ -132,24 +193,28 @@ function recordRow(record: MaintenanceRecord): string {
 
 function reportsView(): string {
   const groups = [...groupBySystem(records)]
-  return `<section class="page-heading"><div><p class="sheet-label">Sheet 02 / System reports</p><h2>Portable maintenance record</h2><p>Generate a dated PDF with one clean evidence sheet per system.</p></div>${records.length ? `<button class="button primary" id="download-pdf">${icon('download')}Download PDF report</button>` : ''}</section>
+  return `<section class="page-heading"><div><p class="sheet-label">System reports</p><h1 tabindex="-1">Export maintenance by system</h1><p>Generate a dated PDF with one page for each home system.</p></div>${records.length ? `<button class="button primary" id="download-pdf">${icon('download')}Download PDF report</button>` : ''}</section>
     <div class="notice"><strong>Personal record, not certification.</strong> This report helps you locate your history. It does not prove warranty, permit, insurance, or legal compliance.</div>
-    ${groups.length ? `<section class="report-preview" aria-labelledby="report-preview-title"><div class="report-title"><p class="sheet-label">Report contents</p><h3 id="report-preview-title">${groups.length} system ${groups.length === 1 ? 'sheet' : 'sheets'}</h3></div>${groups.map(([system, items], index) => `<article><span>${String(index + 1).padStart(2, '0')}</span><div><h4>${escapeHtml(system)}</h4><p>${items.length} completed ${items.length === 1 ? 'record' : 'records'} · ${items.filter((item) => item.attachmentId).length} with evidence</p></div><time>${formatDate(items[0].completedDate)}</time></article>`).join('')}</section>` : `<section class="simple-empty"><h3>No system sheets yet</h3><p>Log completed work first, then return here to create your report.</p><button class="button secondary" data-view="log">Go to maintenance log</button></section>`}`
+    ${groups.length ? `<section class="report-preview" aria-labelledby="report-preview-title"><div class="report-title"><p class="sheet-label">Report contents</p><h2 id="report-preview-title">${groups.length} system ${groups.length === 1 ? 'page' : 'pages'}</h2></div>${groups.map(([system, items], index) => `<article><span>${String(index + 1).padStart(2, '0')}</span><div><h3>${escapeHtml(system)}</h3><p>${items.length} completed ${items.length === 1 ? 'record' : 'records'} · ${items.filter((item) => item.attachmentId).length} with evidence</p></div><time>${formatDate(items[0].completedDate)}</time></article>`).join('')}</section>` : `<section class="simple-empty"><h2>No system pages yet</h2><p>Log completed work first, then return here to create your report.</p><a class="button secondary" href="${viewPath('log')}" data-route="log">Go to maintenance log</a></section>`}`
 }
 
 function backupView(): string {
-  return `<section class="page-heading"><div><p class="sheet-label">Sheet 03 / Ownership</p><h2>Back up the whole home file</h2><p>Your browser is the filing cabinet. Keep a second copy somewhere you control.</p></div></section>
-    <section class="backup-layout"><div class="backup-actions"><article><span class="step">01</span><div><h3>Full backup</h3><p>JSON includes every record, setting, and original evidence file. Use it to move or restore this home file.</p></div><button class="button primary" id="export-json" ${records.length ? '' : 'disabled'}>${icon('download')}Export JSON backup</button></article>
-    <article><span class="step">02</span><div><h3>Spreadsheet copy</h3><p>CSV opens in common spreadsheet apps. Evidence hashes are included; files are not.</p></div><button class="button secondary" id="export-csv" ${records.length ? '' : 'disabled'}>${icon('download')}Export CSV</button></article>
-    <article><span class="step">03</span><div><h3>Restore a backup</h3><p>Restoring replaces this device’s current file. The backup is checked before anything changes.</p></div><label class="button secondary file-button">Choose backup<input id="import-json" type="file" accept="application/json,.json"></label></article></div>
-    <form class="home-settings" id="settings-form"><p class="sheet-label">Title block</p><h3>Name this home</h3><label>Home name<input name="homeName" required maxlength="80" value="${escapeHtml(settings.homeName)}"></label><label>Address or description <span>(optional)</span><input name="address" maxlength="160" value="${escapeHtml(settings.address)}"></label><label>Appearance<select name="theme"><option value="system" ${settings.theme === 'system' ? 'selected' : ''}>Follow this device</option><option value="light" ${settings.theme === 'light' ? 'selected' : ''}>Light drafting sheet</option><option value="dark" ${settings.theme === 'dark' ? 'selected' : ''}>Dark blueprint</option></select></label><button class="button primary" type="submit">Save home details</button></form></section>`
+  return `<section class="page-heading"><div><p class="sheet-label">Backup and home details</p><h1 tabindex="-1">Back up your complete home record</h1><p>Download a second copy and keep it somewhere you control.</p></div></section>
+    <section class="backup-layout"><div class="backup-actions"><article><span class="step">01</span><div><h2>Full backup</h2><p>JSON includes every record, setting, and original evidence file. Use it to move or restore this home record.</p></div><button class="button primary" id="export-json" ${records.length ? '' : 'disabled'}>${icon('download')}Export JSON backup</button></article>
+    <article><span class="step">02</span><div><h2>Spreadsheet copy</h2><p>CSV opens in common spreadsheet apps. Evidence hashes are included; files are not.</p></div><button class="button secondary" id="export-csv" ${records.length ? '' : 'disabled'}>${icon('download')}Export CSV</button></article>
+    <article><span class="step">03</span><div><h2>Restore a backup</h2><p>Restoring replaces this device’s current record. The backup is checked before anything changes.</p></div><label class="button secondary file-button">Choose backup<input id="import-json" type="file" accept="application/json,.json"></label></article></div>
+    <form class="home-settings" id="settings-form"><p class="sheet-label">Home details</p><h2>Name this home</h2><label>Home name<input name="homeName" required maxlength="80" value="${escapeHtml(settings.homeName)}"></label><label>Address or description <span>(optional)</span><input name="address" maxlength="160" value="${escapeHtml(settings.address)}"></label><label>Appearance<select name="theme"><option value="system" ${settings.theme === 'system' ? 'selected' : ''}>Follow this device</option><option value="light" ${settings.theme === 'light' ? 'selected' : ''}>Light drafting sheet</option><option value="dark" ${settings.theme === 'dark' ? 'selected' : ''}>Dark blueprint</option></select></label><button class="button primary" type="submit">Save home details</button></form></section>`
 }
 
 function upgradeView(): string {
-  const priceBlock = checkoutAvailability === 'available'
+  const priceBlock = demoMode
+    ? `<div class="price-block price-unavailable"><p>House File Plus</p><strong>Demo only</strong><span>See limits below</span></div>`
+    : checkoutAvailability === 'available'
     ? `<div class="price-block"><p>One-time purchase</p><strong>$29</strong><span>No subscription</span></div>`
     : `<div class="price-block price-unavailable"><p>House File Plus</p><strong>Unavailable</strong><span>Free features continue</span></div>`
-  const purchasePanel = license.unlocked
+  const purchasePanel = demoMode
+    ? `<p class="checkout-status" role="status">Purchases and license checks are disabled in demo. Start for real when you want to check availability.</p>`
+    : license.unlocked
     ? `<div class="license-success">${icon('check')}<div><strong>House File Plus is active</strong><p>This device can hold an unlimited maintenance history.</p></div></div>`
     : checkoutAvailability === 'available'
       ? `<div class="purchase-actions"><a class="button primary" href="${checkoutUrl()}">Buy House File Plus — $29</a><p>Secure checkout is hosted by Sociobot/Dodo, the merchant of record. Refunds are handled there and revoke the license.</p></div>`
@@ -160,29 +225,42 @@ function upgradeView(): string {
           : checkoutAvailability === 'offline'
             ? `<p class="checkout-status" role="status">Connect to the internet to check whether House File Plus checkout is available. Your local home file still works offline.</p>`
             : `<p class="checkout-status" role="status">Checking whether House File Plus checkout is available…</p>`
-  return `<section class="page-heading"><div><p class="sheet-label">House File Plus / One-time</p><h2>${license.unlocked ? 'Your full home file is unlocked.' : 'More room for the life of your home.'}</h2><p>Free is for starting a trustworthy record. Plus expands it for years of repairs and receipts.</p></div></section>
+  return `<section class="page-heading"><div><p class="sheet-label">House File Plus</p><h1 tabindex="-1">${license.unlocked ? 'Use your full home record' : 'Keep more maintenance records'}</h1><p>The free tier is useful on its own. Plus raises the record and file-size limits.</p></div></section>
     <section class="upgrade-sheet">
       ${priceBlock}
-      <div class="tier-comparison"><div><p class="sheet-label">Included free</p><h3>Starter file</h3><ul><li>${icon('check')}25 completed-work records</li><li>${icon('check')}One evidence file per record</li><li>${icon('check')}PDF, CSV, and full JSON backup</li><li>${icon('check')}Offline use on this device</li></ul></div><div class="plus-tier"><p class="sheet-label">House File Plus</p><h3>Long-term file</h3><ul><li>${icon('check')}Unlimited completed-work records</li><li>${icon('check')}Larger evidence files, up to 15 MB</li><li>${icon('check')}A one-time purchase, for this product</li><li>${icon('check')}All free features remain yours</li></ul></div></div>
+      <div class="tier-comparison"><div><p class="sheet-label">Included free</p><h2>Free record</h2><ul><li>${icon('check')}25 completed-work records</li><li>${icon('check')}One evidence file per record, up to 5 MB</li><li>${icon('check')}PDF, CSV, and full JSON backup</li><li>${icon('check')}Offline use on this device</li></ul></div><div class="plus-tier"><p class="sheet-label">House File Plus</p><h2>Higher limits</h2><ul><li>${icon('check')}Unlimited completed-work records</li><li>${icon('check')}One evidence file per record, up to 15 MB</li><li>${icon('check')}A one-time purchase for this product</li><li>${icon('check')}All free features remain available</li></ul></div></div>
       ${purchasePanel}
-      ${license.unlocked ? '' : `<details class="restore-license"><summary>Already purchased? Restore a license</summary><form id="license-form"><label>License token<input name="license" required autocomplete="off" spellcheck="false"></label><button class="button secondary" type="submit">Verify license</button></form></details>`}
+      ${license.unlocked || demoMode ? '' : `<details class="restore-license"><summary>Already purchased? Restore a license</summary><form id="license-form"><label>License token<input name="license" required autocomplete="off" spellcheck="false"></label><button class="button secondary" type="submit">Verify license</button></form></details>`}
       ${license.notice ? `<p class="license-notice" role="status">${escapeHtml(license.notice)}</p>` : ''}
       <p class="legal-copy">By purchasing, you agree to the <a href="/terms/">terms</a>. See how purchase and local record data are handled in our <a href="/privacy/">privacy notice</a>.</p>
     </section>`
 }
 
+function notFoundView(): string {
+  return `<section class="not-found"><p class="sheet-label">404 / Page not found</p><h1 tabindex="-1">Page not found</h1><p>The address does not match a page in Home Maintenance Receipts.</p><a class="button primary" href="/">Return home</a></section>`
+}
+
 function render(): void {
-  const content = currentView === 'log' ? logView() : currentView === 'reports' ? reportsView() : currentView === 'backup' ? backupView() : upgradeView()
+  const content = currentView === 'landing' ? landingView() : currentView === 'log' ? logView() : currentView === 'reports' ? reportsView() : currentView === 'backup' ? backupView() : currentView === 'upgrade' ? upgradeView() : notFoundView()
   app.innerHTML = shell(content)
+  setRouteMetadata()
   bindEvents()
 }
 
 function bindEvents(): void {
-  app.querySelectorAll<HTMLElement>('[data-view]').forEach((element) => element.addEventListener('click', () => {
-    currentView = element.dataset.view as View
-    render()
-    document.querySelector('main')?.focus()
+  app.querySelectorAll<HTMLAnchorElement>('[data-route]').forEach((element) => element.addEventListener('click', (event) => {
+    event.preventDefault()
+    navigate(element.dataset.route as View)
   }))
+  app.querySelectorAll<HTMLAnchorElement>('[data-leave-demo]').forEach((element) => element.addEventListener('click', (event) => {
+    event.preventDefault()
+    void leaveDemo(element.href)
+  }))
+  app.querySelector('#reset-demo')?.addEventListener('click', () => { void resetDemo() })
+  app.querySelector('#start-real')?.addEventListener('click', (event) => {
+    event.preventDefault()
+    void leaveDemo('/log')
+  })
   app.querySelector('#add-record')?.addEventListener('click', () => openRecordDialog())
   app.querySelector('#empty-add')?.addEventListener('click', () => openRecordDialog())
   app.querySelector('#clear-filters')?.addEventListener('click', () => { query = ''; statusFilter = 'all'; render() })
@@ -197,7 +275,7 @@ function bindEvents(): void {
   app.querySelector<HTMLInputElement>('#import-json')?.addEventListener('change', importJson)
   app.querySelector<HTMLFormElement>('#settings-form')?.addEventListener('submit', updateSettings)
   app.querySelector<HTMLFormElement>('#license-form')?.addEventListener('submit', restoreLicense)
-  if (currentView === 'upgrade' && !license.unlocked && checkoutAvailability === 'idle') {
+  if (!demoMode && (currentView === 'landing' || currentView === 'upgrade') && !license.unlocked && checkoutAvailability === 'idle') {
     checkoutAvailability = 'checking'
     render()
     void updateCheckoutAvailability()
@@ -206,7 +284,34 @@ function bindEvents(): void {
 
 async function updateCheckoutAvailability(): Promise<void> {
   checkoutAvailability = await checkCheckoutAvailability()
-  if (currentView === 'upgrade' && !license.unlocked) render()
+  if ((currentView === 'landing' || currentView === 'upgrade') && !license.unlocked) render()
+}
+
+function navigate(view: View, replace = false): void {
+  currentView = view
+  const path = viewPath(view)
+  if (replace) history.replaceState({ view }, '', path)
+  else history.pushState({ view }, '', path)
+  render()
+  const heading = app.querySelector<HTMLElement>('main h1')
+  heading?.focus()
+  const status = app.querySelector<HTMLElement>('#route-status')
+  if (status) status.textContent = document.title
+}
+
+async function resetDemo(): Promise<void> {
+  const data = await createDemoData()
+  await replaceAll(data.records, data.attachments, data.settings)
+  records = await getRecords()
+  settings = await getSettings()
+  applyTheme()
+  render()
+  toast('Demo reset to three sample records.')
+}
+
+async function leaveDemo(destination: string): Promise<void> {
+  try { await clearCurrentDatabase() } catch { /* The sandbox remains isolated even when deletion is blocked. */ }
+  window.location.assign(destination)
 }
 
 function renderKeepingFocus(id: string): void {
@@ -234,7 +339,7 @@ function dialogFrame(content: string, labelledBy: string): HTMLDialogElement {
 
 function openRecordDialog(record: MaintenanceRecord | null = null): void {
   if (!record && !license.unlocked && records.length >= 25) {
-    currentView = 'upgrade'; render(); toast('The free file holds 25 records. Plus removes the limit.'); return
+    navigate('upgrade'); toast('The free record holds 25 entries. Plus removes the limit.'); return
   }
   editing = record
   const dialog = dialogFrame(`<form method="dialog" id="record-form"><div class="dialog-header"><div><p class="sheet-label">${record ? 'Revise record' : 'New evidence entry'}</p><h2 id="record-dialog-title">${record ? 'Edit completed work' : 'Log completed work'}</h2></div><button type="button" class="icon-button" data-close aria-label="Close dialog">×</button></div>
@@ -396,25 +501,46 @@ function registerServiceWorker(): void {
 
 function showUpdate(worker: ServiceWorker): void {
   updateWorker = worker
-  toast('A fresh blueprint is ready.', 'Update now')
+  toast('An app update is ready.', 'Update now')
   document.querySelector('#toast-action')?.addEventListener('click', () => updateWorker?.postMessage({ type: 'SKIP_WAITING' }))
 }
 
 async function start(): Promise<void> {
   try {
-    const receivedLicense = captureLicenseFromUrl()
-    license = initialLicenseState()
+    const route = parseRoute()
+    currentView = route.view
+    demoMode = route.demo
+    configureStorage(demoMode)
+    const receivedLicense = demoMode ? false : captureLicenseFromUrl()
+    license = demoMode ? { unlocked: false, checking: false, notice: '', token: '' } : initialLicenseState()
     ;[records, settings] = await Promise.all([getRecords(), getSettings()])
+    if (demoMode && records.length === 0) {
+      const data = await createDemoData()
+      await replaceAll(data.records, data.attachments, data.settings)
+      ;[records, settings] = await Promise.all([getRecords(), getSettings()])
+    }
     applyTheme(); render(); registerServiceWorker()
     window.addEventListener('online', () => { render(); toast('Back online. Your local records stayed available.') })
     window.addEventListener('offline', () => { render(); toast('You’re offline. Your home file still works.') })
+    window.addEventListener('popstate', () => {
+      const next = parseRoute()
+      if (next.demo !== demoMode) {
+        window.location.reload()
+        return
+      }
+      currentView = next.view
+      render()
+      app.querySelector<HTMLElement>('main h1')?.focus()
+    })
     if (license.token) {
       license = await verifyLicense()
       if (currentView === 'upgrade') render()
       if (receivedLicense) toast(license.unlocked ? 'Purchase restored. House File Plus is active.' : license.notice)
     }
   } catch (caught) {
-    app.innerHTML = `<main id="main" class="fatal-error"><p class="sheet-label">Local file unavailable</p><h1>Your home file could not open.</h1><p>${escapeHtml(caught instanceof Error ? caught.message : 'This browser did not provide private local storage.')}</p><p>Check that private browsing restrictions are disabled, then reload. No remote copy exists.</p><button class="button primary" id="retry-startup">Try again</button></main>`
+    app.innerHTML = shell(`<section class="fatal-error"><p class="sheet-label">Local storage unavailable</p><h1 tabindex="-1">Your home file could not open</h1><p>${escapeHtml(caught instanceof Error ? caught.message : 'This browser did not provide private local storage.')}</p><p>Allow site storage, then reload this page. No remote copy exists.</p><button class="button primary" id="retry-startup">Try again</button></section>`)
+    setRouteMetadata()
+    bindEvents()
     app.querySelector('#retry-startup')?.addEventListener('click', () => window.location.reload())
   }
 }

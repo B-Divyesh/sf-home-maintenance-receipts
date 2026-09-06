@@ -1,8 +1,14 @@
 import type { EvidenceFile, MaintenanceRecord, Settings } from './types'
 import { defaultSettings } from './types'
 
-const DB_NAME = 'home-maintenance-receipts'
+const REAL_DB_NAME = 'home-maintenance-receipts'
+const DEMO_DB_NAME = 'demo:home-maintenance-receipts'
 const DB_VERSION = 1
+let databaseName = REAL_DB_NAME
+
+export function configureStorage(demo: boolean): void {
+  databaseName = demo ? DEMO_DB_NAME : REAL_DB_NAME
+}
 
 function requestResult<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -21,7 +27,7 @@ function transactionDone(transaction: IDBTransaction): Promise<void> {
 
 export async function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION)
+    const request = indexedDB.open(databaseName, DB_VERSION)
     request.onupgradeneeded = () => {
       const database = request.result
       if (!database.objectStoreNames.contains('records')) {
@@ -38,6 +44,15 @@ export async function openDatabase(): Promise<IDBDatabase> {
     }
     request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(request.error ?? new Error('Your private home file could not be opened.'))
+  })
+}
+
+export async function clearCurrentDatabase(): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(databaseName)
+    request.onsuccess = () => resolve()
+    request.onerror = () => reject(request.error ?? new Error('The demo data could not be cleared.'))
+    request.onblocked = () => reject(new Error('Close another demo tab, then reset the demo again.'))
   })
 }
 

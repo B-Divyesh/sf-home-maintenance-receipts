@@ -1,9 +1,9 @@
 {
   "name": "Home Maintenance Receipts",
   "short_name": "Home Receipts",
-  "description": "A private, offline record of completed home maintenance and its evidence.",
+  "description": "Keep completed home maintenance, dates, providers, and receipts in one local record.",
   "id": "/?source=pwa",
-  "start_url": "/?v=1",
+  "start_url": "/?v=2",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f4f0e6",
