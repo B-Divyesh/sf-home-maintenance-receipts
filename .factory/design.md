@@ -46,8 +46,8 @@ Spacing follows a 4 px base: 4, 8, 12, 16, 24, 32, 48, 64. Content measure is
 
 - A narrow drafting rail contains home status and primary destinations on
   wide screens. It becomes a horizontal tab row on phones.
-- The page header acts as a title block. A single global `<h1>` names the
-  current product; section titles use `<h2>` and report-style overlines.
+- The page header acts as a title block. Each route has one job-naming `<h1>`;
+  section titles use `<h2>` and report-style overlines.
 - Records are ruled ledger rows rather than floating cards. Corners are 2–8 px,
   never pill-shaped except compact status badges.
 - Fine grid lines explain the visual world but sit behind opaque reading
@@ -97,3 +97,8 @@ neon gradient, excessive clutter, illegible pseudo-writing.
 Generated with the factory Azure image model (`factory-image`) on 2026-08-28.
 Prompt sidecar is stored beside the source image in `assets/src/`. The generated
 image is original to this product and used under the factory's output terms.
+
+The 1200×630 social card is a centered crop of that source image. The 180px
+Apple touch icon is resized from the original hand-authored product icon. Both
+derivatives were made locally with ImageMagick on 2026-09-06; no new source art
+or third-party material was introduced.
