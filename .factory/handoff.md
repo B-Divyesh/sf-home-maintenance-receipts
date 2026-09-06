@@ -146,3 +146,22 @@ purchase link appears, and free use remains intact. It is not a product defect.
 For a repeatable verification, use the clean-checkout commands listed above and
 then run every exact command in `.factory/claims.json`; live evidence and the
 full independent report are in `.factory/verification-5.md`.
+
+## Strict review 1
+
+**PASS** on 2026-09-06 UTC with **0 findings** and **0 untested claims**.
+The review examined implementation `e06a2ccf83e57828131697cfa5a4ff7022aecb28`
+and documentation `ffb8f548750df9e2bd7c473428c90be44ceb1f6c`.
+
+From a detached clean worktree, `npm ci --include=dev`, unit tests, lint,
+strict typecheck, production build, 70/70 Playwright tests, both audits, and
+every one of the 18 declared claim commands passed. The live deployment matched
+all 22 public candidate build files. Fresh desktop and phone sessions confirmed
+the first screen, isolated sample reset and exit, offline reload, routes,
+keyboard/focus, reduced motion, accessibility scans, privacy request scope,
+PWA installability, legal pages, and designed 404. The unavailable billing
+endpoint remains correctly hidden behind an unavailable-purchases state.
+
+The full review is in `.factory/review-1.md`. Its evidence is in
+`/work/.evidence/review-1-*`; the machine-readable review result is
+`/work/.evidence/qa-result.json`.
