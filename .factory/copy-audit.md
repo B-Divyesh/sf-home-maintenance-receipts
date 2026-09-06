@@ -29,8 +29,8 @@ Audited 2026-09-06. Counts treat hyphenated terms and displayed numbers as one w
 | House File Plus | 3 | Pass |
 | Free use includes 25 records and evidence files up to 5 MB. | 11 | Pass |
 | Plus raises those limits. | 4 | Pass |
-| Purchases are unavailable. | 3 | Pass |
-| The free record, exports, and offline use still work. | 9 | Pass |
+| House File Plus raises the record and file-size limits. | 8 | Pass |
+| Open the details to check purchase availability. | 7 | Pass |
 | Keep dates, providers, costs, and receipts for completed home maintenance. | 10 | Pass |
 
 ## Shared first-screen labels

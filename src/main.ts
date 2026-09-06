@@ -126,7 +126,7 @@ function landingView(): string {
     ? `<p class="paid-price"><strong>$29 once.</strong> No subscription.</p><a class="button secondary" href="/plus" data-route="upgrade">See House File Plus</a>`
     : checkoutAvailability === 'unavailable'
       ? '<p><strong>Purchases are unavailable.</strong> The free record, exports, and offline use still work.</p><a class="button secondary" href="/plus" data-route="upgrade">See free and paid limits</a>'
-      : '<p role="status">Checking whether House File Plus is available…</p>'
+      : '<p>House File Plus raises the record and file-size limits. Open the details to check purchase availability.</p><a class="button secondary" href="/plus" data-route="upgrade">See free and paid limits</a>'
   return `<section class="landing-hero" aria-labelledby="landing-title"><div class="landing-copy"><p class="sheet-label">Home upkeep record</p><h1 id="landing-title" tabindex="-1">Keep proof of completed home maintenance</h1><p class="audience">For households that need dates, providers, and receipts ready when they sell, insure, or troubleshoot a home.</p><div class="hero-actions"><a class="button primary" href="/demo">Try it with sample data</a><span>Opens three completed jobs with receipts.</span><a class="text-link" href="/log" data-route="log">Start your own record</a></div><ul class="plain-facts"><li>Records stay on this device.</li><li>Works offline after the first visit.</li><li>Free for up to 25 records.</li></ul></div><picture><source srcset="/assets/blueprint-desk.webp" type="image/webp"><img src="/assets/blueprint-desk.jpg" width="768" height="512" alt="A home plan, receipt, ruler, pencil, and wrench arranged on a blueprint desk" fetchpriority="high" decoding="async"></picture></section>
     <section class="landing-preview" aria-labelledby="preview-title"><div><p class="sheet-label">Sample maintenance log</p><h2 id="preview-title">See the details you can find later</h2><p>Each row keeps the completed task, date, provider, cost, next date, and evidence hash together.</p></div><ol><li><strong>Heating & cooling</strong><span>Replaced furnace filter · Self · $27.84</span><small>Receipt attached · Next date recorded</small></li><li><strong>Roof & gutters</strong><span>Cleared gutters · Northside Home Care · $165.00</span><small>Invoice attached · Due soon</small></li><li><strong>Water heater</strong><span>Flushed tank · Maple Plumbing · $189.00</span><small>Service note attached · Next year</small></li></ol></section>
     <section class="landing-section" aria-labelledby="how-title"><p class="sheet-label">How it works</p><h2 id="how-title">Keep each job in three steps</h2><ol class="steps"><li><span>01</span><div><h3>Log completed work</h3><p>Add the system, task, date, provider, cost, and next due date.</p></div></li><li><span>02</span><div><h3>Attach the evidence</h3><p>Add one receipt, photo, PDF, or text file to the record.</p></div></li><li><span>03</span><div><h3>Export a copy</h3><p>Download a PDF report, spreadsheet, or complete JSON backup.</p></div></li></ol></section>
@@ -275,7 +275,7 @@ function bindEvents(): void {
   app.querySelector<HTMLInputElement>('#import-json')?.addEventListener('change', importJson)
   app.querySelector<HTMLFormElement>('#settings-form')?.addEventListener('submit', updateSettings)
   app.querySelector<HTMLFormElement>('#license-form')?.addEventListener('submit', restoreLicense)
-  if (!demoMode && (currentView === 'landing' || currentView === 'upgrade') && !license.unlocked && checkoutAvailability === 'idle') {
+  if (!demoMode && currentView === 'upgrade' && !license.unlocked && checkoutAvailability === 'idle') {
     checkoutAvailability = 'checking'
     render()
     void updateCheckoutAvailability()
@@ -284,7 +284,7 @@ function bindEvents(): void {
 
 async function updateCheckoutAvailability(): Promise<void> {
   checkoutAvailability = await checkCheckoutAvailability()
-  if ((currentView === 'landing' || currentView === 'upgrade') && !license.unlocked) render()
+  if (currentView === 'upgrade' && !license.unlocked) render()
 }
 
 function navigate(view: View, replace = false): void {
